@@ -14,13 +14,13 @@ export const getChatHistory = createServerFn({ method: "GET" })
       .order("created_at", { ascending: true })
       .limit(500);
     if (error) throw new Error(error.message);
-    const messages: UIMessage[] = (data ?? []).map((row) => ({
+    const messages = (data ?? []).map((row) => ({
       id: row.message_id,
       role: row.role as UIMessage["role"],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       parts: (row.parts as any) ?? [],
     }));
-    return { messages };
+    return { messages } as { messages: UIMessage[] };
   });
 
 export const clearChatHistory = createServerFn({ method: "POST" })
