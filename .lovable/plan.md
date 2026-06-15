@@ -1,59 +1,64 @@
-## Obiettivo
-Allineare il pannello **Diagnostica** (e il motore che lo alimenta) all'architettura v2 Core-Satellite descritta in `STRATEGIA.md` / `BUILD_SPEC.md`: due regimi separati, split core/satellite, universo dinamico, max posizioni riferito al solo satellite.
+# Diagnostica del sistema (stato attuale)
 
-## Stato attuale (cosa non va)
-- `trading-engine` ha **un solo filtro di regime** (`btc_sma50` o `btc_sma200`, alternativi) e tratta tutti gli asset alla stessa stregua. Non distingue core da satellite.
-- `engine_diagnostics` salva solo `regime`, `regime_reason`, `btc_sma50`. Nessun campo macro / core state / universo eligible / spread / volume.
-- `diagnostica.tsx` mostra un'unica card "Regime di mercato" e usa `settings.max_positions` (globale) invece di `max_satellite_positions`.
-- I candidati arrivano da `asset_universe` statico (ETH/SOL/ADA/LINK/AVAX/DOT), non dalla tabella `universe` v2 (che esiste già ma è vuota — manca lo scanner).
+**Engine**: gira regolarmente ogni 5 min (`Ciclo v2 completato`, ultimo alle 16:10). Snapshot portafoglio aggiornati (totale costante 318 USD, mode `paper`).
 
-## Cosa cambia
+**Regime macro** = `risk-off` → BTC 67.123 sotto SMA200 77.527 → **Core in stable, non investito**. Corretto.
+**Regime meso** = `risk-off` → BTC sotto SMA50 73.694 → **Satellite 0/2**. Corretto.
 
-### 1. DB — estendere `engine_diagnostics` (migration)
-Nuove colonne (tutte nullable, retro-compatibili):
-- `macro_regime` text · `macro_reason` text · `btc_sma200` numeric
-- `meso_regime` text · `meso_reason` text  *(rimpiazza concettualmente l'attuale `regime`, che resta per compat)*
-- `core_state` jsonb → `{ invested: bool, target: {BTC:0.6,ETH:0.4}, held: [{asset,qty,value_usd,weight_actual}] }`
-- `satellite_state` jsonb → `{ open: int, max: int, positions: [...] }`
-- `universe_eligible` jsonb → `[{asset, vol_24h_usd, spread_bps, age_days, eligible:true}]`
+**Posizioni aperte**: 0. Coerente con doppio risk-off.
 
-### 2. Engine — portare `trading-engine` al modello a 2 livelli
-Nello stesso file (niente split fisico in questa fase, lo scheduling resta unico):
-- Calcolare **macro** = BTC vs SMA200 → governa il core.
-- Calcolare **meso** = BTC vs SMA50 + F&G (logica attuale) → governa il satellite.
-- Ciclo core: se macro risk-on, target = `core_weights` su sleeve='core'; se risk-off, sposta core in stable. Ribilanciamento solo se drift > soglia (no churn ogni run).
-- Ciclo satellite: itera **solo** sugli asset `eligible=true` di `public.universe` (fallback `asset_universe.momentum` se tabella vuota), confronta con `max_satellite_positions` (default 2), NON con `max_positions`. Sleeve='satellite' nelle insert.
-- Il conteggio "max posizioni satellite" filtra `positions` per `sleeve='satellite'`.
-- Scrive sullo snapshot diagnostica i nuovi campi (macro, meso, core_state, satellite_state, universe_eligible con vol/spread presi durante lo scan).
+## Problemi trovati
 
-### 3. Universe scanner (minimo necessario)
-Nuova edge function `universe-scanner` (cron ~2h) che:
-- Chiama Kraken `AssetPairs` + `Ticker`, calcola `volume_24h_usd` e `spread_bps`.
-- Aggiorna `public.universe` con `eligible = vol >= settings.min_volume_24h && spread <= settings.max_spread_bps && age >= settings.min_age_days`.
-- Esclude BTC/ETH (riservati al core) e le stablecoin.
+### 1) BUG CRITICO — Universo dinamico: 0 asset eligible su 640
+Lo scanner ha popolato 640 coppie USD, calcola volume e spread correttamente (XRP 38M, SOL 27M, ADA 17M...), ma **tutti** sono marcati `eligible=false` con motivo `Età 0d < min 60d`.
 
-Se preferisci rimandare lo scanner a un turno successivo, l'engine usa il fallback statico ma il pannello mostra comunque la sezione "Universo" vuota con stato chiaro.
+Causa: `first_seen` viene impostato a `now()` la **prima volta** che lo scanner vede l'asset. Siccome la tabella è stata popolata oggi, ogni asset ha età 0 giorni. Il filtro `min_listing_age_days=60` è pensato per escludere nuovi listing su Kraken, non per attendere 60 giorni dopo l'attivazione dello scanner.
 
-### 4. `diagnostics.functions.ts`
-Estendere `DiagnosticsPayload` con: `macro`, `meso`, `core`, `satellite`, `universe`. Leggere i nuovi campi della tabella; restituire `openSatellitePositions` (count `sleeve='satellite'`) e `max_satellite_positions` dalle settings.
+Conseguenza: il satellite cade sempre sul fallback statico (`asset_universe.momentum`) e l'universo dinamico è di fatto disattivo per i prossimi 60 giorni.
 
-### 5. UI — `diagnostica.tsx`
-Refactor in 4 card:
-- **Regime MACRO** (verde/rosso) — BTC vs SMA200, badge "Core investito" / "Core in cash", lista asset core con peso target vs attuale.
-- **Regime MEDIO** — BTC vs SMA50 + F&G, badge satellite `0/2`, motivo.
-- **Universo eligible** — tabella con colonne Asset · Volume 24h · Spread (bps) · Età · Eligible.
-- **Candidati satellite valutati** — tabella attuale (Asset, Prezzo, SMA20, SMA50, Trend, Esito) ma sorgente = solo universo eligible.
+### 2) Dashboard non allineata a v2
+La KPI "Regime / F&G" mostra un solo valore generico letto da `sentiment_snapshots.regime`. Con v2 ci sono **due regimi distinti** (Macro→Core, Meso→Satellite) e la dashboard non li distingue, non mostra lo stato Core (investito/in stable) né l'utilizzo slot Satellite (0/2).
 
-### 6. Settings
-- Forzare `max_satellite_positions = 2` per preset Bilanciato (già a 2). Nessuna migrazione dati extra: già allineato dal turno precedente.
-- Il vecchio `max_positions` resta come tetto totale (core+satellite) ma non è più mostrato nella diagnostica del satellite.
+# Piano interventi
 
-## File toccati
-- `supabase/migrations/<new>.sql` — colonne diagnostiche
-- `supabase/functions/trading-engine/index.ts` — dual regime + sleeve + eligible universe + nuova scrittura snapshot
-- `supabase/functions/universe-scanner/index.ts` *(nuovo, se confermi)*
-- `src/lib/diagnostics.functions.ts` — payload esteso
-- `src/routes/_authenticated/diagnostica.tsx` — UI 4 card
+## A. Fix universo (migrazione SQL one-shot)
+Backfill `first_seen` retrodatandolo a ~400 giorni fa per **tutti gli asset già presenti** in `public.universe`:
+```sql
+UPDATE public.universe
+SET first_seen = LEAST(first_seen, now() - interval '400 days');
+```
+- Effetto immediato: al prossimo run dello scanner (max 2h, o invocazione manuale) gli asset con vol > min e spread < max diventeranno `eligible=true`.
+- Nuovi listing futuri continueranno a essere filtrati dai 60 giorni (comportamento corretto): per loro `first_seen` sarà la data reale del primo avvistamento.
+- Trigger manuale `universe-scanner` subito dopo la migrazione per popolare l'eleggibilità senza attendere il cron.
 
-## Domanda prima di procedere
-Vuoi che includa **subito** lo `universe-scanner` (Fase 2 completa) oppure faccio prima allineamento engine+diagnostica con fallback statico e lo scanner in un turno separato?
+## B. Dashboard v2 (`src/routes/_authenticated/dashboard.tsx`)
+Sostituire l'unica KPI "Regime / F&G" con **due KPI** alimentate da `getDiagnostics` (server fn già esistente):
+
+1. **Macro → Core**
+   - Badge `risk-on` / `risk-off`
+   - Sub-line: `Core: INVESTITO (BTC 60% / ETH 40%)` oppure `Core: IN STABLE`
+   - Tooltip: motivo (BTC vs SMA200)
+
+2. **Meso → Satellite**
+   - Badge `risk-on` / `risk-off`
+   - Sub-line: `Satellite N/2 · F&G XX (label)`
+   - Tooltip: motivo (BTC vs SMA50 + F&G)
+
+Grid attuale 4 colonne → diventa 5 su xl (Valore, 24h, 7g, Macro, Meso) oppure mantengo 4 e accorpo le due variazioni. Proposta: **xl:grid-cols-5** per non perdere info.
+
+Aggiungere un piccolo banner sotto la grid se `data.universe.filter(eligible).length === 0`:
+> "Universo dinamico vuoto — satellite su fallback statico."
+
+Nessun cambio al grafico portfolio.
+
+## C. (Opzionale) Allineare `max_positions`
+Settings utente ha `max_positions=2` e `max_satellite_positions=2`. In v2 `max_positions` è il cap totale (core+satellite). Con BTC+ETH core (2 slot) + 2 satellite servirebbero **4 slot totali**. Da confermare se vuoi che alzi `max_positions` a 4 nei preset.
+
+# Dettagli tecnici
+
+- File toccati: `supabase/migrations/<new>.sql` (1 UPDATE), `src/routes/_authenticated/dashboard.tsx` (KPI + query a `getDiagnostics`).
+- Nessuna modifica all'engine, allo scanner, alla diagnostica.
+- Invocazione manuale scanner dopo migrazione tramite `supabase--curl_edge_functions`.
+
+# Domanda
+Confermi: (1) fix universo come sopra, (2) dashboard con 5 KPI (Valore/24h/7g/Macro/Meso), (3) alzo `max_positions` a 4 nei preset Bilanciato/Aggressivo per non strozzare il satellite quando il core è investito? Oppure preferisci lasciare `max_positions` invariato?
