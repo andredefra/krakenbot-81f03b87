@@ -77,6 +77,9 @@ type Settings = {
   enabled_sentiment_sources: Record<string, boolean>;
   sentiment_weights: Record<string, number>;
   asset_universe: { core?: string[]; momentum?: string[]; regime?: string[] };
+  regime_filter?: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
+  fg_greed_cap?: number;
+  strategy_preset?: string;
 };
 
 type Position = {
