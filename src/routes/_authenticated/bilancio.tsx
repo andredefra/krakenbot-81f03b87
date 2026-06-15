@@ -39,7 +39,6 @@ import {
   bulkImportInfraCosts,
   getIncomeStatement,
   getTaxSummary,
-  updateTaxSettings,
   syncKrakenFees,
 } from "@/lib/bilancio.functions";
 
