@@ -9,12 +9,12 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { TrendingUp, TrendingDown, Activity, Gauge } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 
-type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
+type Timeframe = "1H" | "1D" | "1M" | "3M" | "1Y" | "ALL";
 const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
   { key: "1H", label: "1H", ms: 60 * 60 * 1000 },
   { key: "1D", label: "1G", ms: 24 * 60 * 60 * 1000 },
-  { key: "1W", label: "1S", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "1M", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
+  { key: "3M", label: "3M", ms: 90 * 24 * 60 * 60 * 1000 },
   { key: "1Y", label: "1A", ms: 365 * 24 * 60 * 60 * 1000 },
   { key: "ALL", label: "Tutto", ms: null },
 ];
@@ -171,35 +171,44 @@ function DashboardPage() {
 
 function ChartView({ snapshots, timeframe }: { snapshots: { ts: string; total_value: number }[]; timeframe: Timeframe }) {
   const tf = TIMEFRAMES.find((t) => t.key === timeframe)!;
-  const filtered = useMemo(() => {
-    if (tf.ms === null) return snapshots;
-    const cutoff = Date.now() - tf.ms;
-    return snapshots.filter((s) => new Date(s.ts).getTime() >= cutoff);
+
+  const { data, domain, ticks } = useMemo(() => {
+    const now = Date.now();
+    const allPoints = snapshots.map((s) => ({ t: new Date(s.ts).getTime(), total_value: s.total_value }));
+    let start: number;
+    if (tf.ms === null) {
+      start = allPoints.length > 0 ? allPoints[0].t : now - 24 * 60 * 60 * 1000;
+    } else {
+      start = now - tf.ms;
+    }
+    const filtered = allPoints.filter((p) => p.t >= start);
+    const tickCount = 6;
+    const step = (now - start) / (tickCount - 1);
+    const ticks = Array.from({ length: tickCount }, (_, i) => Math.round(start + step * i));
+    return { data: filtered, domain: [start, now] as [number, number], ticks };
   }, [snapshots, tf.ms]);
 
-  if (filtered.length < 2) {
+  if (snapshots.length === 0) {
     return (
       <div className="h-72 grid place-items-center text-sm text-muted-foreground text-center px-4">
-        {snapshots.length < 2
-          ? "Nessuno snapshot ancora — il motore creerà i dati a ogni ciclo cron."
-          : `Pochi dati nell'intervallo ${tf.label}. Prova un timeframe più ampio.`}
+        Nessuno snapshot ancora — il motore creerà i dati a ogni ciclo cron.
       </div>
     );
   }
 
   const showTime = timeframe === "1H" || timeframe === "1D";
   const showYear = timeframe === "1Y" || timeframe === "ALL";
-  const tickFmt = (v: string) => {
+  const tickFmt = (v: number) => {
     const d = new Date(v);
     if (showTime) return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-    if (showYear) return d.toLocaleDateString("it-IT", { month: "short", year: "2-digit" });
+    if (showYear) return d.toLocaleDateString("it-IT", { month: "short", year: "numeric" });
     return d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
   };
 
   return (
     <div className="h-72 -ml-2">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={filtered} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
+        <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="pv" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.45} />
@@ -208,11 +217,14 @@ function ChartView({ snapshots, timeframe }: { snapshots: { ts: string; total_va
           </defs>
           <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
           <XAxis
-            dataKey="ts"
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={domain}
+            ticks={ticks}
             tickFormatter={tickFmt}
             stroke="var(--color-muted-foreground)"
             fontSize={11}
-            minTickGap={40}
           />
           <YAxis
             tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
@@ -227,7 +239,7 @@ function ChartView({ snapshots, timeframe }: { snapshots: { ts: string; total_va
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelFormatter={(v) => new Date(v as string).toLocaleString("it-IT")}
+            labelFormatter={(v) => new Date(v as number).toLocaleString("it-IT")}
             formatter={(v: number) => [formatUsd(v), "Totale"]}
           />
           <Area type="monotone" dataKey="total_value" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#pv)" />
