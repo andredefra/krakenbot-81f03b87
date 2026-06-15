@@ -270,10 +270,11 @@ function BacktestSection() {
   const [preset, setPreset] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [years, setYears] = useState<1 | 3 | 5>(3);
   const [universe, setUniverse] = useState<"core" | "core_sleeve">("core_sleeve");
+  const [startCapital, setStartCapital] = useState<number>(200);
 
   const run = useServerFn(runBacktestFn);
   const runMut = useMutation({
-    mutationFn: () => run({ data: { preset, years, universe } }),
+    mutationFn: () => run({ data: { preset, years, universe, startCapital } }),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore backtest"),
   });
 
@@ -288,7 +289,7 @@ function BacktestSection() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Preset</label>
             <Select value={preset} onValueChange={(v) => setPreset(v as typeof preset)}>
@@ -321,6 +322,17 @@ function BacktestSection() {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Capitale iniziale (€)</label>
+            <input
+              type="number"
+              min={10}
+              step={50}
+              value={startCapital}
+              onChange={(e) => setStartCapital(Math.max(10, Number(e.target.value) || 0))}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm tabular-nums"
+            />
+          </div>
           <div className="flex items-end">
             <Button onClick={() => runMut.mutate()} disabled={runMut.isPending} className="w-full">
               <RefreshCw className={`size-4 ${runMut.isPending ? "animate-spin" : ""}`} />
@@ -328,6 +340,7 @@ function BacktestSection() {
             </Button>
           </div>
         </div>
+
 
         {runMut.isPending && <Skeleton className="h-80 w-full" />}
 
@@ -365,12 +378,29 @@ function BacktestSection() {
               </ResponsiveContainer>
             </div>
 
+            {(() => {
+              const final = (pct: number) => startCapital * (1 + pct / 100);
+              const eur = (v: number) => v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+              const cls = (v: number) => v >= startCapital ? "text-[color:var(--profit)]" : "text-[color:var(--loss)]";
+              const sV = final(runMut.data.strategyKpis.totalReturnPct);
+              const bV = final(runMut.data.btcKpis.totalReturnPct);
+              const pV = final(runMut.data.spxKpis.totalReturnPct);
+              return (
+                <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
+                  <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
+                  <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
+                  <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
+                  <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-3 gap-3">
               <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
+
 
             {runMut.data.cached && (
               <p className="text-xs text-muted-foreground">📦 Risultato dalla cache (valido 24h)</p>

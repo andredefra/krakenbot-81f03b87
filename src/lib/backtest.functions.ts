@@ -11,6 +11,7 @@ const inputSchema = z.object({
   preset: z.enum(["conservative", "balanced", "aggressive"]),
   years: z.number().int().min(1).max(5),
   universe: z.enum(["core", "core_sleeve"]),
+  startCapital: z.number().min(10).max(1_000_000).default(200),
 });
 
 export type BacktestPayload = {
@@ -29,8 +30,8 @@ export type BacktestPayload = {
 const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
-function hashInput(input: { preset: string; years: number; universe: string }): string {
-  return `${input.preset}|${input.years}y|${input.universe}`;
+function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
+  return `${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
 }
 
 export const runBacktestFn = createServerFn({ method: "POST" })
@@ -98,7 +99,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
 
     const { runBacktest } = await import("./backtest.server");
     const result = runBacktest({
-      startCapital: 1000,
+      startCapital: data.startCapital,
       preset: {
         max_positions: presetMeta.values.max_positions,
         max_position_pct: presetMeta.values.max_position_pct,
