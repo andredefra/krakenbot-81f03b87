@@ -25,6 +25,20 @@ const CRYPTO_SYMBOLS: Record<string, string> = {
   LTC: "LTCUSD",
 };
 
+// CoinGecko ids — usato per estendere lo storico oltre i ~720 giorni che Kraken
+// public OHLC restituisce. Solo close giornaliero, ma il backtest engine usa solo close.
+const COINGECKO_IDS: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+  ADA: "cardano",
+  LINK: "chainlink",
+  AVAX: "avalanche-2",
+  DOT: "polkadot",
+  XRP: "ripple",
+  LTC: "litecoin",
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
