@@ -105,8 +105,10 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       .range(0, 9999);
     const fg = (fgRows.data ?? []).map((r) => ({ date: r.date as string, value: r.value }));
 
-    const assets: Record<string, Array<{ date: string; close: number }>> = {};
+    // Assets dict for rotation engine: BTC anchor + tradeable alts
+    const assets: Record<string, Array<{ date: string; close: number }>> = { BTC: bySym["BTC"] };
     for (const sym of tradedSyms) {
+      if (sym === "BTC") continue;
       if (bySym[sym] && bySym[sym].length > 50) assets[sym] = bySym[sym];
     }
 
@@ -123,6 +125,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         daily_loss_limit_pct: presetMeta.values.daily_loss_limit_pct,
         fg_greed_cap: presetMeta.values.fg_greed_cap,
         regime_filter: presetMeta.values.regime_filter,
+        rebalance_days: presetMeta.values.rebalance_days ?? 7,
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
@@ -142,11 +145,13 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       strategyKpis: result.strategyKpis,
       btcKpis: result.btcKpis,
       spxKpis: result.spxKpis,
+      btcRegimeKpis: result.btcRegimeKpis,
       tradesCount: result.tradeLog.length,
       universe: data.universe,
       preset: data.preset,
       years: data.years,
     };
+
 
     await supabase
       .from("backtest_runs")
