@@ -287,33 +287,39 @@ export type Database = {
       portfolio_snapshots: {
         Row: {
           cash_value: number
+          core_value: number | null
           created_at: string
           id: string
           mode: Database["public"]["Enums"]["trade_mode"]
           positions_value: number
           realized_pnl_day: number
+          satellite_value: number | null
           total_value: number
           ts: string
           user_id: string
         }
         Insert: {
           cash_value: number
+          core_value?: number | null
           created_at?: string
           id?: string
           mode?: Database["public"]["Enums"]["trade_mode"]
           positions_value: number
           realized_pnl_day?: number
+          satellite_value?: number | null
           total_value: number
           ts?: string
           user_id: string
         }
         Update: {
           cash_value?: number
+          core_value?: number | null
           created_at?: string
           id?: string
           mode?: Database["public"]["Enums"]["trade_mode"]
           positions_value?: number
           realized_pnl_day?: number
+          satellite_value?: number | null
           total_value?: number
           ts?: string
           user_id?: string
@@ -340,6 +346,7 @@ export type Database = {
           pnl_pct: number | null
           qty: number
           side: Database["public"]["Enums"]["position_side"]
+          sleeve: string
           status: Database["public"]["Enums"]["position_status"]
           stop_price: number | null
           trailing_high: number | null
@@ -365,6 +372,7 @@ export type Database = {
           pnl_pct?: number | null
           qty: number
           side?: Database["public"]["Enums"]["position_side"]
+          sleeve?: string
           status?: Database["public"]["Enums"]["position_status"]
           stop_price?: number | null
           trailing_high?: number | null
@@ -390,6 +398,7 @@ export type Database = {
           pnl_pct?: number | null
           qty?: number
           side?: Database["public"]["Enums"]["position_side"]
+          sleeve?: string
           status?: Database["public"]["Enums"]["position_status"]
           stop_price?: number | null
           trailing_high?: number | null
@@ -435,6 +444,9 @@ export type Database = {
         Row: {
           asset_universe: Json
           capital_reference: number
+          cooldown_hours: number
+          core_satellite_split: Json
+          core_weights: Json
           created_at: string
           daily_loss_limit_pct: number
           enabled_sentiment_sources: Json
@@ -443,14 +455,25 @@ export type Database = {
           is_running: boolean
           kill_switch_floor: number
           loss_carryforward_cents: number
+          macro_ma_period: number
           max_position_pct: number
           max_positions: number
+          max_satellite_positions: number
+          max_spread_pct: number
+          mid_ma_period: number
+          min_listing_age_days: number
           min_target_pct: number
+          min_volume_24h: number
           mode: Database["public"]["Enums"]["trade_mode"]
+          monthly_trade_cap: number
           paper_fee_bps: number
+          rebalance_frequency: string
           regime_filter: string
+          risk_per_trade_pct: number
           sentiment_weights: Json
+          stop_atr_mult: number
           stop_loss_pct: number
+          stop_min_pct: number
           strategy_preset: string
           take_profit_pct: number
           tax_country: string
@@ -464,6 +487,9 @@ export type Database = {
         Insert: {
           asset_universe?: Json
           capital_reference?: number
+          cooldown_hours?: number
+          core_satellite_split?: Json
+          core_weights?: Json
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
@@ -472,14 +498,25 @@ export type Database = {
           is_running?: boolean
           kill_switch_floor?: number
           loss_carryforward_cents?: number
+          macro_ma_period?: number
           max_position_pct?: number
           max_positions?: number
+          max_satellite_positions?: number
+          max_spread_pct?: number
+          mid_ma_period?: number
+          min_listing_age_days?: number
           min_target_pct?: number
+          min_volume_24h?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
+          monthly_trade_cap?: number
           paper_fee_bps?: number
+          rebalance_frequency?: string
           regime_filter?: string
+          risk_per_trade_pct?: number
           sentiment_weights?: Json
+          stop_atr_mult?: number
           stop_loss_pct?: number
+          stop_min_pct?: number
           strategy_preset?: string
           take_profit_pct?: number
           tax_country?: string
@@ -493,6 +530,9 @@ export type Database = {
         Update: {
           asset_universe?: Json
           capital_reference?: number
+          cooldown_hours?: number
+          core_satellite_split?: Json
+          core_weights?: Json
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
@@ -501,14 +541,25 @@ export type Database = {
           is_running?: boolean
           kill_switch_floor?: number
           loss_carryforward_cents?: number
+          macro_ma_period?: number
           max_position_pct?: number
           max_positions?: number
+          max_satellite_positions?: number
+          max_spread_pct?: number
+          mid_ma_period?: number
+          min_listing_age_days?: number
           min_target_pct?: number
+          min_volume_24h?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
+          monthly_trade_cap?: number
           paper_fee_bps?: number
+          rebalance_frequency?: string
           regime_filter?: string
+          risk_per_trade_pct?: number
           sentiment_weights?: Json
+          stop_atr_mult?: number
           stop_loss_pct?: number
+          stop_min_pct?: number
           strategy_preset?: string
           take_profit_pct?: number
           tax_country?: string
@@ -597,6 +648,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      universe: {
+        Row: {
+          asset: string
+          base: string
+          created_at: string
+          eligible: boolean
+          excluded_reason: string | null
+          first_seen: string
+          id: string
+          last_checked: string
+          quote: string
+          spread_pct: number | null
+          updated_at: string
+          volume_24h: number | null
+        }
+        Insert: {
+          asset: string
+          base: string
+          created_at?: string
+          eligible?: boolean
+          excluded_reason?: string | null
+          first_seen?: string
+          id?: string
+          last_checked?: string
+          quote: string
+          spread_pct?: number | null
+          updated_at?: string
+          volume_24h?: number | null
+        }
+        Update: {
+          asset?: string
+          base?: string
+          created_at?: string
+          eligible?: boolean
+          excluded_reason?: string | null
+          first_seen?: string
+          id?: string
+          last_checked?: string
+          quote?: string
+          spread_pct?: number | null
+          updated_at?: string
+          volume_24h?: number | null
+        }
+        Relationships: []
       }
     }
     Views: {
