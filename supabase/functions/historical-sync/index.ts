@@ -25,6 +25,20 @@ const CRYPTO_SYMBOLS: Record<string, string> = {
   LTC: "LTCUSD",
 };
 
+// Binance public ticker — usato per estendere lo storico oltre i ~720 giorni che Kraken
+// public OHLC restituisce. API gratuita senza chiave, paginabile via endTime.
+const BINANCE_SYMBOLS: Record<string, string> = {
+  BTC: "BTCUSDT",
+  ETH: "ETHUSDT",
+  SOL: "SOLUSDT",
+  ADA: "ADAUSDT",
+  LINK: "LINKUSDT",
+  AVAX: "AVAXUSDT",
+  DOT: "DOTUSDT",
+  XRP: "XRPUSDT",
+  LTC: "LTCUSDT",
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -36,7 +50,22 @@ Deno.serve(async (req) => {
 
   const report: Record<string, unknown> = {};
   try {
-    // 1. Crypto via Kraken (5y ≈ 1825 candele, Kraken restituisce ~720 per call → paginare)
+
+    // 1b. Storico esteso (~5 anni) via Binance — fatto PRIMA di Kraken così Kraken
+    // sovrascrive l'overlap. Binance = free, no key, paginazione via endTime.
+    for (const [sym, pair] of Object.entries(BINANCE_SYMBOLS)) {
+      try {
+        const rows = await fetchBinanceDailyHistory(pair, 5);
+        if (rows.length) {
+          await upsertOhlc(supa, sym, "binance", rows);
+          report[`${sym}_bn`] = rows.length;
+        }
+      } catch (e) {
+        report[`${sym}_bn_error`] = String(e);
+      }
+    }
+
+    // 1. Crypto via Kraken — ~720 giorni con OHLC completo, sovrascrive binance per il recente
     for (const [sym, pair] of Object.entries(CRYPTO_SYMBOLS)) {
       try {
         const rows = await fetchKrakenDailyHistory(pair, 5);
@@ -125,6 +154,43 @@ async function fetchKrakenDailyHistory(pair: string, years: number): Promise<Ohl
   for (const r of out) m.set(r.date, r);
   return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
+
+// Binance public klines — fino a 1000 candele per call, OHLC completo, no API key.
+// Paginazione backward via `endTime`. Docs: https://binance-docs.github.io/apidocs/spot/en/#kline-candlestick-data
+async function fetchBinanceDailyHistory(pair: string, years: number): Promise<OhlcRow[]> {
+  const totalDays = Math.ceil(years * 365.25);
+  const dayMs = 86400_000;
+  let endTime = Date.now();
+  const all: OhlcRow[] = [];
+  for (let attempt = 0; attempt < 5 && all.length < totalDays; attempt++) {
+    const url = `https://data-api.binance.vision/api/v3/klines?symbol=${pair}&interval=1d&limit=1000&endTime=${endTime}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Binance HTTP ${r.status}`);
+    const j = await r.json() as Array<[number, string, string, string, string, string, number, string, number, string, string, string]>;
+    if (!Array.isArray(j) || j.length === 0) break;
+    for (const k of j) {
+      const close = parseFloat(k[4]);
+      if (!isFinite(close)) continue;
+      all.push({
+        date: new Date(k[0]).toISOString().slice(0, 10),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close,
+        volume: parseFloat(k[5]),
+      });
+    }
+    // prossima pagina: endTime = primo openTime - 1 giorno
+    endTime = j[0][0] - dayMs;
+    if (j.length < 1000) break;
+  }
+  // dedupe e sort
+  const m = new Map<string, OhlcRow>();
+  for (const r of all) m.set(r.date, r);
+  return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+
 
 async function upsertOhlc(supa: ReturnType<typeof createClient>, symbol: string, source: string, rows: OhlcRow[]) {
   const payload = rows.map((r) => ({ symbol, source, ...r }));

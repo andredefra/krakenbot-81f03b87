@@ -1,46 +1,56 @@
-## Diagnosi
+# Backtest: storico esteso + trasparenza fee/sentiment
 
-**"Sempre uguale"** = il backtest è cache-ato per 24h in `backtest_runs` con hash `preset|years|universe`. Quando hai rilanciato è stata restituita la run precedente (creata QUANDO SPX era ancora vuoto), quindi `equity.spx` è ancora tutto $1000 → in vista % diventa una linea a 0% (piatta). BTC e Strategia dovrebbero invece variare ora — se vedi proprio tutto identico è perché la pagina ha ancora il risultato cached in memoria.
+## Problema
 
-**"Strategia perde"** = lo dico come osservazione: con questi parametri (stop loss ampio, momentum su sleeve, cap F&G) su un periodo dove le alts hanno fatto peggio di BTC è plausibile. Non lo tocchiamo ora — prima rendiamolo configurabile e leggibile, poi se vuoi rivediamo i preset.
+Selezionando "5 anni" il grafico parte da agosto 2024 (~2 anni). Causa: l'endpoint pubblico Kraken `OHLC` (interval=1440) restituisce un massimo di ~720 candele daily per pair e non permette di andare più indietro nel tempo. Il backtest si allinea sul timeline BTC quindi tutto viene troncato.
 
-**"Voglio partire da €200 modificabile"** = oggi `startCapital = 1000` è hardcoded in `backtest.functions.ts:101`. Da esporre come input.
+In più non è chiaro all'utente cosa entra nel calcolo: commissioni, slippage, sentiment.
 
-## Modifiche
+## Cosa fare
 
-### 1. Capitale iniziale configurabile
+### 1. Fonte storica crypto più lunga (CoinGecko)
 
-**`src/lib/backtest.functions.ts`**
-- Aggiungo `startCapital: z.number().min(10).max(1_000_000)` all'`inputSchema`.
-- Lo passo a `runBacktest({ startCapital: data.startCapital, ... })`.
-- Includo `startCapital` nell'hash della cache → `${preset}|${years}y|${universe}|${startCapital}€` → invalida automaticamente la run vecchia.
+Aggiungere in `supabase/functions/historical-sync/index.ts` un fetcher CoinGecko come **fallback/estensione** per BTC/ETH/SOL/ADA/LINK/AVAX/DOT/XRP/LTC:
 
-**`src/routes/_authenticated/strategia.tsx` — `BacktestSection`**
-- Nuovo state `const [startCapital, setStartCapital] = useState(200)`.
-- Nuovo campo input numerico nella griglia (passa da `grid-cols-4` a `grid-cols-5` su md+):
-  ```
-  Capitale iniziale (€)  [200]
-  ```
-  con `min={10} step={50}`.
-- Passo `startCapital` nella mutation.
-- Label asse Y / tooltip restano in **%** (decisione presa nel turno precedente, comparabile).
-- Aggiungo sotto al chart una riga riassuntiva:
-  `Capitale finale: Strategia €X · BTC €Y · S&P €Z` calcolata da `startCapital * (1 + kpi.totalReturnPct/100)`.
+- Endpoint pubblico: `https://api.coingecko.com/api/v3/coins/{id}/market_chart?vs_currency=usd&days=max&interval=daily`
+- Restituisce close daily fino al 2013 (BTC) / inception per le altre
+- Gratuito senza API key (rate limit ~10-30 req/min → fetch sequenziale con `await sleep(2500)` tra simboli)
+- Strategia merge: prima carica CoinGecko (storico lungo, solo close), poi sovrascrive con Kraken (ultimi 2 anni, OHLC completo). Upsert per `(symbol, date)` già gestito.
 
-### 2. Bust della cache stale
+Vantaggi: 5 anni reali per tutti, niente costi, niente chiavi.
 
-Cambiando il formato dell'hash, tutte le run precedenti diventano irraggiungibili e la prossima esecuzione gira fresca (con SPX popolato). Nessun DELETE serve.
+Limite accettato: per il periodo > 2 anni avremo solo `close` (high/low/open = close). Il backtest engine usa solo `close`, quindi nessun impatto sui risultati.
 
-### 3. Etichette in €
+### 2. Validazione "Periodo" in UI
 
-Sostituisco i `$` residui nei testi del backtest con `€` (è puramente cosmetico, il motore lavora su numeri puri; OHLC sono comunque indicizzati a `startCapital` per la curva). Nota: i prezzi storici crypto/SPX sono in USD, ma per il backtest che parte da `startCapital` e moltiplica per ratio è equivalente — assumiamo cambio fisso. Lo dichiaro implicitamente usando solo "€" come unità di display.
+Se l'utente seleziona 5 anni ma in DB ci sono meno candele BTC, mostrare un badge sotto il chart: "Storico disponibile da AAAA-MM-DD".
 
-### Non tocco
-- Engine (`backtest.server.ts`): già accetta `startCapital` come parametro.
-- Logica strategia / preset.
-- DB / RLS / migrations.
+### 3. Trasparenza fee/sentiment nella pagina Strategia
 
-## Verifica
-1. Apro `/strategia`, scrivo `200` nel nuovo campo, lancio.
-2. Vedo 3 curve in % distinte (strategia, BTC arancione che oscilla, SPX verde non più piatto).
-3. Cambio a `500`, rilancio → nuova run (cache busted), curve identiche in % (è normale: il ratio non cambia) ma "Capitale finale" scala.
+Aggiungere sotto il grafico una piccola sezione "Cosa è incluso nel calcolo":
+
+- **Commissioni**: 0.4% per lato (taker fee Kraken Pro tier base)
+- **Slippage**: 0.1% per lato
+- **Filtro Fear & Greed**: blocca nuovi ingressi sopra la soglia del preset (Bilanciato: 75)
+- **Filtro regime BTC**: SMA50/SMA200 a seconda del preset
+
+Così l'utente sa esattamente cosa sta vedendo.
+
+### 4. Invalidare la cache backtest
+
+`backtest_runs` ha risultati cachati con lo storico vecchio: bumpare `hashInput` aggiungendo un suffisso versione (`v2`) per forzare ricalcolo.
+
+## File toccati
+
+- `supabase/functions/historical-sync/index.ts` — aggiunta `fetchCoinGeckoDailyHistory()` + merge prima di Kraken
+- `src/lib/backtest.functions.ts` — bump versione hash
+- `src/routes/_authenticated/strategia.tsx` — badge "storico disponibile da" + sezione "Cosa è incluso"
+
+## Dopo il deploy
+
+Eseguo `historical-sync` per popolare lo storico CoinGecko (la prima sync impiega ~30-60 secondi per i 9 simboli per rispettare i rate limit).
+
+## Note
+
+- Non tocco l'engine `backtest.server.ts`: fee, slippage e F&G greed cap sono già applicati correttamente.
+- Non aggiungo "uscite su sentiment estremo" perché non è in STRATEGIA.md — se lo vuoi lo discutiamo a parte.
