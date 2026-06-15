@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity } from "lucide-react";
-import { getDiagnostics, type CandidateRow } from "@/lib/diagnostics.functions";
+import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass } from "lucide-react";
+import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
   component: DiagnosticaPage,
@@ -24,8 +24,8 @@ function DiagnosticaPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine</h1>
-          <p className="text-sm text-muted-foreground">Cosa sta facendo (o non facendo) il bot in questo momento</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine v2</h1>
+          <p className="text-sm text-muted-foreground">Due regimi (macro/medio), stato Core e Satellite, universo dinamico</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
           <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
@@ -55,33 +55,100 @@ function DiagnosticaPage() {
   );
 }
 
-function Diag({ data }: { data: NonNullable<ReturnType<typeof getDiagnostics>> extends Promise<infer R> ? R : never }) {
-  const riskOn = data.regime === "risk-on";
+function Diag({ data }: { data: DiagnosticsPayload }) {
+  const macroOn = data.macro.regime === "risk-on";
+  const mesoOn = data.meso.regime === "risk-on";
+
   return (
     <>
-      {/* Regime card */}
-      <Card className={riskOn ? "border-green-500/40" : "border-red-500/40"}>
+      {/* MACRO + Core */}
+      <Card className={macroOn ? "border-green-500/40" : "border-red-500/40"}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Activity className="size-5" />
-                Regime di mercato
+                <Compass className="size-5" /> Regime MACRO → Core
               </CardTitle>
-              <CardDescription>Aggiornato: {data.cycleAt ? new Date(data.cycleAt).toLocaleString("it-IT") : "—"}</CardDescription>
+              <CardDescription>BTC vs SMA200. Governa il sleeve Core (BTC/ETH o stable). Aggiornato: {data.cycleAt ? new Date(data.cycleAt).toLocaleString("it-IT") : "—"}</CardDescription>
             </div>
-            <Badge className={riskOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"} variant="outline">
-              {riskOn ? "● RISK-ON" : "● RISK-OFF"}
-            </Badge>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className={macroOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"} variant="outline">
+                {macroOn ? "● RISK-ON" : "● RISK-OFF"}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {data.core.invested ? "Core: INVESTITO" : "Core: IN STABLE"}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Kpi label="BTC" value={data.btcLast?.toLocaleString("it-IT", { maximumFractionDigits: 0 }) ?? "—"} suffix="USD" />
+          <Kpi label="BTC SMA200" value={data.btcSma200?.toLocaleString("it-IT", { maximumFractionDigits: 0 }) ?? "—"} suffix="USD" />
+          <Kpi label="Capitale Core" value={data.core.coreCapitalUsd?.toLocaleString("it-IT", { maximumFractionDigits: 0 }) ?? "—"} suffix="USD" />
+          <Kpi label="Asset Core" value={Object.keys(data.core.targetWeights).join(" / ") || "—"} />
+          <div className="col-span-2 md:col-span-4 text-sm bg-muted/30 rounded-md px-3 py-2 border border-border">
+            <span className="font-medium">Motivo: </span>{data.macro.reason ?? "—"}
+          </div>
+
+          {data.core.held.length > 0 && (
+            <div className="col-span-2 md:col-span-4">
+              <div className="text-xs text-muted-foreground mb-1">Composizione Core (target vs reale)</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30 border-b border-border">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Asset</th>
+                      <th className="text-right px-3 py-2 font-medium">Qty</th>
+                      <th className="text-right px-3 py-2 font-medium">Valore USD</th>
+                      <th className="text-right px-3 py-2 font-medium">Peso target</th>
+                      <th className="text-right px-3 py-2 font-medium">Peso reale</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.core.held.map((h) => (
+                      <tr key={h.asset} className="border-b border-border/50 last:border-0">
+                        <td className="px-3 py-2 font-medium">{h.asset}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{h.qty.toLocaleString("it-IT", { maximumFractionDigits: 6 })}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{h.value_usd.toLocaleString("it-IT", { maximumFractionDigits: 2 })}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{(h.weight_target * 100).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{(h.weight_actual * 100).toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* MESO + Satellite */}
+      <Card className={mesoOn ? "border-green-500/40" : "border-red-500/40"}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="size-5" /> Regime MEDIO → Satellite
+              </CardTitle>
+              <CardDescription>BTC vs SMA50 + Fear & Greed. Governa SOLO il sleeve Satellite (momentum).</CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className={mesoOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"} variant="outline">
+                {mesoOn ? "● RISK-ON" : "● RISK-OFF"}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Satellite: {data.satellite.open} / {data.satellite.max}
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Kpi label="BTC SMA50" value={data.btcSma50?.toLocaleString("it-IT", { maximumFractionDigits: 0 }) ?? "—"} suffix="USD" />
           <Kpi label="Fear & Greed" value={data.fgValue?.toString() ?? "—"} suffix={data.fgLabel ?? ""} />
-          <Kpi label="Posizioni aperte" value={`${data.openPositions} / ${data.settings?.max_positions ?? "?"}`} />
+          <Kpi label="Pos. satellite" value={`${data.satellite.open} / ${data.satellite.max}`} />
+          <Kpi label="Preset" value={data.settings?.strategy_preset ?? "—"} />
           <div className="col-span-2 md:col-span-4 text-sm bg-muted/30 rounded-md px-3 py-2 border border-border">
-            <span className="font-medium">Motivo: </span>{data.regimeReason ?? "—"}
+            <span className="font-medium">Motivo: </span>{data.meso.reason ?? "—"}
           </div>
         </CardContent>
       </Card>
@@ -92,16 +159,56 @@ function Diag({ data }: { data: NonNullable<ReturnType<typeof getDiagnostics>> e
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Kpi label="Running" value={data.settings?.is_running ? "Sì" : "No"} />
           <Kpi label="Modalità" value={data.settings?.mode?.toUpperCase() ?? "—"} />
-          <Kpi label="Preset" value={data.settings?.strategy_preset ?? "—"} />
-          <Kpi label="Filtro regime" value={data.settings?.regime_filter ?? "—"} />
+          <Kpi label="Max satellite" value={data.settings?.max_satellite_positions?.toString() ?? "—"} />
+          <Kpi label="Tot. posizioni aperte" value={`${data.openPositions}`} />
         </CardContent>
       </Card>
 
-      {/* Candidates */}
+      {/* Universo dinamico */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Candidati valutati nell'ultimo ciclo</CardTitle>
-          <CardDescription>Per ogni asset i filtri applicati e il motivo per cui non è stato aperto</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2"><Layers className="size-4" /> Universo dinamico</CardTitle>
+          <CardDescription>Asset Kraken filtrati per volume e spread. Sorgente: tabella <code>public.universe</code> (cron <code>universe-scanner</code>, ~2h).</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.universe.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Nessun asset eligible. Lo scanner non ha ancora popolato l'universo (usa fallback statico).
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 border-b border-border">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Asset</th>
+                    <th className="text-right px-4 py-2 font-medium">Volume 24h</th>
+                    <th className="text-right px-4 py-2 font-medium">Spread</th>
+                    <th className="text-right px-4 py-2 font-medium">Età</th>
+                    <th className="text-center px-4 py-2 font-medium">Eligible</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.universe.map((u: UniverseRow) => (
+                    <tr key={u.asset} className="border-b border-border/50 last:border-0">
+                      <td className="px-4 py-2 font-medium">{u.asset}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{u.volume_24h != null ? `$${Math.round(u.volume_24h).toLocaleString("it-IT")}` : "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{u.spread_pct != null ? `${u.spread_pct.toFixed(3)}%` : "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{u.age_days != null ? `${u.age_days}d` : "—"}</td>
+                      <td className="px-4 py-2 text-center">{u.eligible ? <CheckCircle2 className="size-4 text-green-500 inline" /> : <XCircle className="size-4 text-muted-foreground inline" />}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Candidati satellite valutati */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Candidati satellite valutati nell'ultimo ciclo</CardTitle>
+          <CardDescription>Solo asset dell'universo eligible. Mostra perché ognuno è stato (o non è stato) aperto.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {data.candidates.length === 0 ? (
@@ -142,6 +249,10 @@ function Diag({ data }: { data: NonNullable<ReturnType<typeof getDiagnostics>> e
           )}
         </CardContent>
       </Card>
+
+      {data.notes && (
+        <Card><CardContent className="py-3 text-sm text-muted-foreground"><AlertCircle className="size-4 inline mr-2" />{data.notes}</CardContent></Card>
+      )}
 
       {data.lastEngineMessage && (
         <Card>
