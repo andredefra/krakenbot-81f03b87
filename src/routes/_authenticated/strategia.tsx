@@ -48,7 +48,7 @@ function StrategiaPage() {
   const applyMut = useMutation({
     mutationFn: (preset: PresetId) => apply({ data: { preset: preset as "conservative" | "balanced" | "aggressive" } }),
     onSuccess: () => {
-      toast.success("Preset applicato — parametri rischio aggiornati");
+      toast.success("Preset v2 applicato — parametri e pesi sentiment aggiornati");
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore"),
@@ -61,12 +61,11 @@ function StrategiaPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Strategia</h1>
         <p className="text-sm text-muted-foreground">
-          Cambia approccio al rischio con un click — i parametri della pagina Rischio vengono riscritti automaticamente.
-          <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop originali. Solo i nuovi useranno il preset.</span>
+          Strategia v2 <strong>Core-Satellite</strong> su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
+          <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop. Solo i nuovi useranno il preset.</span>
         </p>
       </div>
 
-      {/* Preset cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PRESETS.filter((p) => p.id !== "custom").map((p) => (
           <PresetCard
@@ -78,7 +77,6 @@ function StrategiaPage() {
         ))}
       </div>
 
-      {/* Custom indicator */}
       {settingsQ.data?.strategy_preset === "custom" && (
         <Card className="border-amber-500/40">
           <CardContent className="py-4 flex items-center justify-between">
@@ -91,10 +89,8 @@ function StrategiaPage() {
         </Card>
       )}
 
-      {/* Backtest section */}
       <BacktestSection />
 
-      {/* Confirm dialog */}
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -125,6 +121,7 @@ function StrategiaPage() {
 function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; current: boolean; onApply: () => void }) {
   const Icon = ICONS[preset.id];
   const v = preset.values!;
+  const coreSplit = v.core_satellite_split.core;
   return (
     <Card className={current ? "border-primary" : ""}>
       <CardHeader>
@@ -137,17 +134,17 @@ function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; curr
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <Stat label="Max pos" value={v.max_positions.toString()} />
-          <Stat label="Size max" value={`${v.max_position_pct}%`} />
-          <Stat label="Stop loss" value={`−${v.stop_loss_pct}%`} />
-          <Stat label="Take profit" value={`+${v.take_profit_pct}%`} />
-          <Stat label="Daily limit" value={`−${v.daily_loss_limit_pct}%`} />
-          <Stat label="F&G cap" value={v.fg_greed_cap.toString()} />
+          <Stat label="Core / Sat." value={`${Math.round(coreSplit * 100)}/${Math.round((1 - coreSplit) * 100)}`} />
+          <Stat label="Max pos sat." value={v.max_satellite_positions.toString()} />
+          <Stat label="Rischio/trade" value={`${v.risk_per_trade_pct}%`} />
+          <Stat label="Target min" value={`+${v.min_target_pct}%`} />
+          <Stat label="Trade/mese" value={`≤ ${v.monthly_trade_cap}`} />
+          <Stat label="Cooldown" value={`${v.cooldown_hours}h`} />
         </div>
         <div className="flex gap-2 text-xs flex-wrap">
           <Badge variant="outline">Rischio {preset.risk}</Badge>
           <Badge variant="outline">Varianza {preset.variance}</Badge>
-          <Badge variant="outline">{preset.description?.tradesPerMonth} trade/mese</Badge>
+          <Badge variant="outline">F&amp;G ≤ {v.fg_greed_cap}</Badge>
         </div>
         <Button onClick={onApply} disabled={current} className="w-full" variant={current ? "outline" : "default"}>
           {current ? "Già attivo" : "Applica preset"}
@@ -167,30 +164,24 @@ function PresetRecap({ d }: { d: NonNullable<StrategyPreset["description"]> }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 pt-2 text-xs">
         <p className="text-muted-foreground leading-relaxed">{d.summary}</p>
-
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 font-medium"><Coins className="size-3.5" /> Asset tradati</div>
+          <div className="flex items-center gap-1.5 font-medium"><Coins className="size-3.5" /> Asset</div>
           <div className="flex flex-wrap gap-1">
-            {d.assets.map((a) => (
-              <Badge key={a} variant="secondary" className="text-[10px] font-normal">{a}</Badge>
-            ))}
+            {d.assets.map((a) => <Badge key={a} variant="secondary" className="text-[10px] font-normal">{a}</Badge>)}
           </div>
         </div>
-
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 font-medium"><LogIn className="size-3.5 text-green-500" /> Quando entra</div>
+          <div className="flex items-center gap-1.5 font-medium"><LogIn className="size-3.5 text-green-500" /> Quando entra (satellite)</div>
           <ul className="space-y-0.5 text-muted-foreground pl-1">
             {d.entryRules.map((r) => <li key={r}>• {r}</li>)}
           </ul>
         </div>
-
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 font-medium"><LogOut className="size-3.5 text-red-500" /> Quando esce</div>
           <ul className="space-y-0.5 text-muted-foreground pl-1">
             {d.exitRules.map((r) => <li key={r}>• {r}</li>)}
           </ul>
         </div>
-
         <div className="grid grid-cols-1 gap-2 pt-1">
           <div className="flex items-start gap-1.5">
             <ThumbsUp className="size-3.5 text-green-500 shrink-0 mt-0.5" />
@@ -201,7 +192,6 @@ function PresetRecap({ d }: { d: NonNullable<StrategyPreset["description"]> }) {
             <div><span className="font-medium">Evita se:</span> <span className="text-muted-foreground">{d.avoidIf}</span></div>
           </div>
         </div>
-
         <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Drawdown atteso</div>
@@ -228,16 +218,22 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function DiffTable({ current, preset }: { current: Record<string, unknown>; preset: StrategyPreset }) {
   const v = preset.values!;
-  const rows: Array<{ label: string; key: keyof typeof v; suffix?: string }> = [
-    { label: "Max posizioni", key: "max_positions" },
-    { label: "Size max", key: "max_position_pct", suffix: "%" },
-    { label: "Stop loss", key: "stop_loss_pct", suffix: "%" },
-    { label: "Trailing att.", key: "trailing_activate_pct", suffix: "%" },
-    { label: "Trailing gap", key: "trailing_gap_pct", suffix: "%" },
-    { label: "Take profit", key: "take_profit_pct", suffix: "%" },
-    { label: "Daily loss", key: "daily_loss_limit_pct", suffix: "%" },
-    { label: "F&G cap", key: "fg_greed_cap" },
-    { label: "Filtro regime", key: "regime_filter" },
+  const coreSplit = v.core_satellite_split.core;
+  const curSplit = ((current.core_satellite_split ?? {}) as { core?: number }).core;
+  const rows: Array<{ label: string; cur: string; next: string; changed: boolean }> = [
+    { label: "Core / Satellite", cur: curSplit != null ? `${Math.round(Number(curSplit) * 100)}/${Math.round((1 - Number(curSplit)) * 100)}` : "—", next: `${Math.round(coreSplit * 100)}/${Math.round((1 - coreSplit) * 100)}`, changed: Number(curSplit) !== coreSplit },
+    diffRow("Max pos satellite", current.max_satellite_positions, v.max_satellite_positions),
+    diffRow("Rischio per trade", current.risk_per_trade_pct, v.risk_per_trade_pct, "%"),
+    diffRow("Stop ATR mult", current.stop_atr_mult, v.stop_atr_mult, "×"),
+    diffRow("Stop min", current.stop_min_pct, v.stop_min_pct, "%"),
+    diffRow("Trailing att.", current.trailing_activate_pct, v.trailing_activate_pct, "%"),
+    diffRow("Trailing gap", current.trailing_gap_pct, v.trailing_gap_pct, "%"),
+    diffRow("Take profit", current.take_profit_pct, v.take_profit_pct, "%"),
+    diffRow("Target min", current.min_target_pct, v.min_target_pct, "%"),
+    diffRow("Trade/mese", current.monthly_trade_cap, v.monthly_trade_cap),
+    diffRow("Cooldown", current.cooldown_hours, v.cooldown_hours, "h"),
+    diffRow("F&G cap", current.fg_greed_cap, v.fg_greed_cap),
+    diffRow("Daily loss", current.daily_loss_limit_pct, v.daily_loss_limit_pct, "%"),
   ];
   return (
     <div className="mt-3 border border-border rounded-md overflow-hidden">
@@ -246,22 +242,26 @@ function DiffTable({ current, preset }: { current: Record<string, unknown>; pres
           <tr><th className="text-left px-3 py-2">Parametro</th><th className="text-right px-3 py-2">Attuale</th><th className="text-right px-3 py-2">Nuovo</th></tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
-            const cur = current[r.key];
-            const next = v[r.key];
-            const changed = String(cur) !== String(next);
-            return (
-              <tr key={r.key as string} className={`border-t border-border/40 ${changed ? "bg-primary/5" : ""}`}>
-                <td className="px-3 py-1.5">{r.label}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{String(cur ?? "—")}{r.suffix ?? ""}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums font-medium">{String(next)}{r.suffix ?? ""}</td>
-              </tr>
-            );
-          })}
+          {rows.map((r) => (
+            <tr key={r.label} className={`border-t border-border/40 ${r.changed ? "bg-primary/5" : ""}`}>
+              <td className="px-3 py-1.5">{r.label}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{r.cur}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums font-medium">{r.next}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function diffRow(label: string, cur: unknown, next: unknown, suffix = ""): { label: string; cur: string; next: string; changed: boolean } {
+  return {
+    label,
+    cur: cur != null && cur !== "" ? `${cur}${suffix}` : "—",
+    next: `${next}${suffix}`,
+    changed: String(cur) !== String(next),
+  };
 }
 
 // ============ Backtest section ============
@@ -284,7 +284,7 @@ function BacktestSection() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
-            <CardDescription>Come avrebbe performato la strategia negli anni scorsi vs BTC e S&P 500</CardDescription>
+            <CardDescription>Strategia v2 simulata vs BTC buy &amp; hold e benchmark S&amp;P 500</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -313,12 +313,12 @@ function BacktestSection() {
             </Select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Universo</label>
+            <label className="text-xs text-muted-foreground">Universo satellite</label>
             <Select value={universe} onValueChange={(v) => setUniverse(v as typeof universe)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="core">Solo Core (ETH, SOL)</SelectItem>
-                <SelectItem value="core_sleeve">Core + Sleeve momentum</SelectItem>
+                <SelectItem value="core">Solo ETH/SOL</SelectItem>
+                <SelectItem value="core_sleeve">ETH/SOL + top alt liquide</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -340,7 +340,6 @@ function BacktestSection() {
             </Button>
           </div>
         </div>
-
 
         {runMut.isPending && <Skeleton className="h-80 w-full" />}
 
@@ -371,7 +370,7 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia" />
+                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia v2" />
                   <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" />
                 </LineChart>
@@ -396,7 +395,7 @@ function BacktestSection() {
             })()}
 
             <div className="grid grid-cols-3 gap-3">
-              <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
+              <KpiCard title="Strategia v2" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
@@ -413,20 +412,20 @@ function BacktestSection() {
                 <p className="text-xs text-muted-foreground">
                   Storico effettivo: <span className="tabular-nums">{first}</span> → <span className="tabular-nums">{last}</span> (~{actualYears.toFixed(1)} anni)
                   {truncated && (
-                    <span className="text-amber-500"> · Hai chiesto {reqYears} anni ma in DB c'è solo storico più breve — riesegui <code>historical-sync</code> per estendere via CoinGecko.</span>
+                    <span className="text-amber-500"> · Hai chiesto {reqYears} anni ma in DB c'è solo storico più breve.</span>
                   )}
                 </p>
               );
             })()}
 
             <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
-              <div className="font-medium text-foreground">Cosa è incluso nel calcolo</div>
-              <div>• <strong>Commissioni</strong>: 0.4% per lato (taker fee Kraken Pro, tier base)</div>
-              <div>• <strong>Slippage</strong>: 0.1% per lato (stima conservativa su market order)</div>
-              <div>• <strong>Filtro Fear &amp; Greed</strong>: blocca nuovi ingressi quando F&amp;G supera la soglia del preset (Bilanciato: 75, Conservativo: 70, Aggressivo: 85)</div>
-              <div>• <strong>Filtro regime BTC</strong>: ingressi solo se BTC sopra SMA50 (Conservativo/Bilanciato) o SMA200 (Aggressivo)</div>
-              <div>• <strong>Trailing stop, take-profit, kill-switch giornaliero</strong>: applicati come da preset</div>
-              <div className="pt-1 opacity-80">Storico crypto: CoinGecko (storico lungo) + Kraken OHLC (~2 anni recenti). S&amp;P 500: Yahoo/Stooq.</div>
+              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v2)</div>
+              <div>• <strong>Allocazione Core-Satellite</strong>: il core (BTC/ETH) resta investito, lo sleeve satellite fa trading attivo solo per la quota satellite.</div>
+              <div>• <strong>Filtro macro</strong>: se BTC scende sotto SMA{200}, il core esce in stablecoin (rientro al recupero).</div>
+              <div>• <strong>Disciplina commissioni</strong>: target minimo {`+${runMut.data.preset === "conservative" ? 5 : runMut.data.preset === "aggressive" ? 3 : 4}%`}, cooldown e tetto trade mensile applicati.</div>
+              <div>• <strong>Commissioni</strong>: 0.4% per lato (taker Kraken Pro), slippage 0.1% per lato.</div>
+              <div>• <strong>Stop</strong>: max(stop_min, 2×ATR) come da preset; trailing e take-profit parziale applicati.</div>
+              <div className="pt-1 opacity-80">Storico crypto: Binance (storico lungo) + Kraken OHLC recenti. S&amp;P 500: Yahoo/Stooq.</div>
             </div>
 
             {runMut.data.cached && (
@@ -439,8 +438,6 @@ function BacktestSection() {
           <Card className="border-dashed">
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
               Premi "Esegui backtest" per simulare il preset sui dati storici.
-              <br />
-              <span className="text-xs">Richiede che lo storico OHLC sia stato popolato (esegui prima la funzione <code>historical-sync</code>).</span>
             </CardContent>
           </Card>
         )}
