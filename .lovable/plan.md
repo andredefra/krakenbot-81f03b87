@@ -1,60 +1,94 @@
-## Parte 1 — Rendere visibile la chat AI
 
-La chat è già stata costruita (`AssistantChat`, `FloatingChat`, route `/assistant`, endpoint `/api/chat`, tool, persistenza DB) ma non è agganciata al layout, quindi non la vedi.
+# Piano — Test Telegram + pagina Bilancio
 
-Cosa farò:
-1. Aggiungere la voce **"Assistente"** nella sidebar di `src/routes/_authenticated/route.tsx` (icona Bot, link a `/assistant`).
-2. Montare `<FloatingChat />` dentro lo stesso layout, dopo `<main>`, così la bolla in basso a destra appare su **tutte** le pagine autenticate.
-3. Verificare in preview che: bolla visibile, click apre lo sheet, pagina `/assistant` carica, primo messaggio funziona.
+## Parte 1 — Test Telegram (subito)
 
-Niente cambia su logica/tool della chat — solo wiring UI.
+**Obiettivo:** verificare che `notifyTelegram()` consegni messaggi sul tuo chat ID.
 
-## Parte 2 — Separare Paper da Live + report PDF al go-live
+- Nuova server function `sendTelegramTest` in `src/lib/telegram.functions.ts` — autenticata (`requireSupabaseAuth`), invia "🧪 Test da TradingBot — <timestamp>" via `notifyTelegram()` e ritorna `{ ok, error? }` leggendo la risposta HTTP di Telegram (così se token/chat ID sono sbagliati lo vediamo).
+- Pulsante **"Invia test Telegram"** nella pagina `/mode`, sezione Notifiche, con toast di esito (✅ inviato / ❌ messaggio di errore).
+- Loggo l'esito anche in `events_log` (`component='telegram'`, `level=info|error`).
 
-L'obiettivo è: quando passerai a Live, i dati paper restano "congelati" e ricevi nei log un PDF scaricabile con il resoconto della Fase Paper, da mostrare a te o a investitori.
+**Verifica:** dopo l'implementazione invoco il server fn dal sandbox e ti chiedo conferma che ti sia arrivato.
 
-### Separazione dati paper / live
+---
 
-Tutte le tabelle operative hanno già modalità implicita ma non filtrata. Aggiungo una colonna `mode` (`paper` | `live`, default `paper`) su:
-- `positions`
-- `events_log`
-- `portfolio_snapshots`
+## Parte 2 — Pagina `/bilancio`
 
-Backfill: tutte le righe esistenti → `mode = 'paper'`.
-Tutte le pagine del cruscotto (Dashboard, Posizioni, Storico, Sentiment, Log) filtreranno per la **modalità attualmente attiva** in `settings.mode`. Così quando passi a Live vedi solo i numeri Live; per rivedere il Paper basterà uno switch "Mostra archivio Paper" (toggle in alto a destra delle pagine interessate).
+Nuova voce sidebar **"Bilancio"** (icona Calculator), route `_authenticated/bilancio.tsx`. Filtrata per `mode` attivo (Paper/Live) tramite `useActiveMode`, come le altre pagine.
 
-### Trigger del report
+### Layout — 4 sezioni verticali
 
-Modifico la pagina `/mode`:
-- Pulsante "GO LIVE" non più disabled (resta protetto da doppia conferma).
-- Al click: dialogo "Sei sicuro? Verrà generato un report PDF della fase Paper".
-- Conferma → server function `generatePaperReport` che:
-  1. Aggrega da DB i dati paper: equity iniziale/finale, P&L totale, % return, max drawdown, Sharpe approssimato, n. trade, win-rate, best/worst trade, durata media, breakdown per asset, snapshot sentiment medio.
-  2. Genera un PDF brandizzato con `pdf-lib` (logo Bot, tabelle, grafico equity curve come SVG embed).
-  3. Carica il PDF in un nuovo bucket Supabase Storage `reports` (privato, RLS scoped a `user_id`).
-  4. Inserisce una riga in `events_log` con `level=info`, `component=mode`, `message="Report Paper generato — go-live"`, e un nuovo campo `attachment_url` (storage path).
-  5. Aggiorna `settings.mode = 'live'`.
+**A) Costi infrastruttura** (manuali + import CSV)
+- Tabella editabile: voce, categoria (`infra`/`api`/`altro`), importo, valuta, ricorrenza (`one_off`/`monthly`/`yearly`), data inizio, data fine (nullable = ancora attivo), note.
+- Bottoni: "Aggiungi voce", "Importa CSV" (parsing client-side, validazione, preview, conferma), "Esporta CSV".
+- KPI in alto: **Costo mese corrente**, **Costo YTD**, **Run-rate annuo**.
 
-### Log con allegato
+**B) Costi di trading (Kraken)**
+- Pull reali dalla Kraken API (`TradesHistory`) via nuova server fn `syncKrakenFees` — recupera fee per trade dei trade chiusi e le persiste in nuova tabella `trade_fees` (un record per trade, idempotente per `kraken_trade_id`).
+- Sync automatico (cron pg_cron ogni ora) + bottone "Sincronizza ora".
+- In Paper: nessuna chiamata Kraken; le fee sono stimate dal campo `fee_estimate` sulle posizioni chiuse (se assente, applico 0.26% sul controvalore — configurabile in `settings`).
+- KPI: **Fees mese**, **Fees YTD**, **Fee % media sul volume**.
 
-La pagina `/logs` mostrerà, sulle righe con `attachment_url`, un'icona 📎 con bottone **"Scarica PDF"** che genera un signed URL e apre il file.
+**C) Conto economico** (cuore della pagina)
+Tabella mensile + grafico:
+```text
+                       Mese    YTD    Run-rate annuo
+Ricavi (P&L lordo)     ...     ...    ...
+- Fees trading         ...     ...    ...
+= P&L netto trading    ...     ...    ...
+- Costi infrastruttura ...     ...    ...
+= Utile ante imposte   ...     ...    ...
+- Imposte (26%)        ...     ...    ...
+= Utile netto          ...     ...    ...
+```
+- "Ricavi" = somma `realized_pnl` dalle `positions` chiuse nel periodo (filtrate per `mode`).
+- Grafico equity netta nel tempo (linea utile netto cumulato, con shading separato per lordo/netto).
 
-Il tool dell'assistente `setBotMode('live')` verrà sbloccato e chiamerà la stessa server function, così potrai dirgli "passa a live" e ricevere il report.
+**D) Tasse — Italia (default)**
+- Selettore **Paese di residenza fiscale** (default `IT`, salvato in `settings.tax_country`). Architettura pronta per altri paesi (mappa `tax_rules` lato server), ma implemento solo `IT` ora.
+- Regime: **Imposta sostitutiva 26%** su plusvalenze crypto realizzate (Quadro RT).
+- Calcolo:
+  - Plusvalenza fiscale anno = `Σ realized_pnl` dei trade chiusi nell'anno solare (solo Live; il toggle "include Paper" è OFF di default e mostra disclaimer "paper non rilevante ai fini fiscali").
+  - Compensazione minus pregresse (campo manuale opzionale "Minusvalenze riportate da anni precedenti", max 4 anni).
+  - Imposta dovuta = `max(0, plusvalenza − minus) × 26%`.
+- **Scadenze fiscali IT** mostrate come timeline + reminder banner se mancano <30 giorni:
+  - **30 giugno** — saldo imposte anno precedente + 1° acconto (40% IRPEF; per sostitutiva crypto = saldo intero).
+  - **30 novembre** — 2° acconto.
+  - **Dichiarazione Redditi PF** — apertura aprile, termine 30/09 (telematico).
+  - **Quadro RW** (monitoraggio) — segnalato come "verifica con commercialista", non calcolato automaticamente.
+- Box "Quanto ti rimane":
+  - Utile netto post-tasse YTD
+  - Tasse stimate da accantonare (con barra "accantonato vs dovuto" — campo manuale "Accantonato finora")
+  - Prossima scadenza con countdown
 
-## Dettagli tecnici
+### Aspetti tecnici
 
-- **DB migration**: `ALTER TABLE positions/events_log/portfolio_snapshots ADD COLUMN mode text NOT NULL DEFAULT 'paper'`. `events_log` riceve anche `attachment_url text`.
-- **Storage**: bucket `reports` privato + policy `auth.uid() = owner` per select/insert.
-- **PDF**: `pdf-lib` (puro JS, gira nel Worker — niente sharp/canvas).
-- **Equity curve**: SVG generato server-side e disegnato come immagine nel PDF.
-- **Server fn**: `src/lib/reports.functions.ts` (`generatePaperReport`, `getReportDownloadUrl`).
-- **Filtro modalità**: hook `useActiveMode()` che legge `settings.mode` da realtime, poi tutte le query aggiungono `.eq('mode', activeMode)`. Toggle "Archivio Paper" forza `mode='paper'` nelle query.
+**Migration:**
+- `infra_costs` (id, user_id, name, category, amount_cents, currency, recurrence, start_date, end_date, notes, created_at)
+- `trade_fees` (id, user_id, kraken_trade_id UNIQUE, position_id FK, fee_cents, currency, traded_at, raw jsonb)
+- `settings`: aggiungo `tax_country text default 'IT'`, `tax_reserve_cents bigint default 0`, `loss_carryforward_cents bigint default 0`, `paper_fee_bps int default 26`.
+- RLS + GRANT su tutte (pattern esistente, `user_id = auth.uid()`).
+- Cron `pg_cron`: chiama `/api/public/cron/sync-kraken-fees` ogni ora (header `apikey` con anon key).
 
-## Cosa NON faccio (in questo step)
+**Server functions** (`src/lib/bilancio.functions.ts`):
+- `listInfraCosts`, `upsertInfraCost`, `deleteInfraCost`, `bulkImportInfraCosts`
+- `getIncomeStatement({ year, month?, mode })` — aggrega ricavi/fees/costi/tasse
+- `syncKrakenFees` (chiama Kraken `TradesHistory` con HMAC, paginazione, upsert)
+- `getTaxSummary({ year, country })` — ritorna plusvalenza, imposta, scadenze, countdown
+- `updateTaxSettings({ country, reserve, carryforward })`
 
-- Non implemento ordini reali su Kraken (la Fase 2 vera richiede chiavi live, sizing ridotto, doppia conferma per ordine — la facciamo dopo, in un piano dedicato).
-- Per ora "GO LIVE" cambia `mode='live'` e genera il PDF, ma il motore di trading continuerà a operare in simulazione finché non colleghiamo l'esecuzione live.
+**Route pubblica** (`/api/public/cron/sync-kraken-fees`) — verifica `apikey` header, itera su utenti con Kraken configurato, chiama `syncKrakenFees` con service role.
 
-## Cosa dovrai fare tu
+**Frontend:**
+- `src/routes/_authenticated/bilancio.tsx` con 4 sezioni in Cards
+- Componenti dedicati: `InfraCostsTable`, `TradingCostsCard`, `IncomeStatementTable`, `TaxPanel`, `TaxDeadlineTimeline`
+- Grafico Recharts (line + area) per equity netta
+- CSV import: `papaparse` (già leggero, da installare)
+- Sidebar: aggiungo "Bilancio" tra "Logs" e "Modalità"
 
-Niente nel pannello Supabase — la migration e il bucket li creo io. Dopo l'implementazione: aprire la chat dalla bolla per testare, poi quando vorrai provare il flusso del report, fare click su GO LIVE e scaricare il PDF dai Log.
+### Esclusioni esplicite
+- Nessuna integrazione con commercialista / generazione F24 / invio Agenzia Entrate.
+- Quadro RW (monitoraggio) e bollo IVAFE NON calcolati (solo nota informativa).
+- Paesi diversi da IT: struttura predisposta ma regole vuote — verranno aggiunte quando servirà.
+- Conversione valute multi-currency: tutto in EUR. Trade in USD vengono convertiti al tasso del giorno di chiusura (chiamata gratuita exchangerate.host, cache giornaliera in nuova tabella `fx_rates`).
