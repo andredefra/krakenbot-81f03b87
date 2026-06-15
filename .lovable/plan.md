@@ -1,51 +1,46 @@
-## Cosa sta succedendo davvero
+## Diagnosi
 
-Ho verificato dati e codice:
+**"Sempre uguale"** = il backtest è cache-ato per 24h in `backtest_runs` con hash `preset|years|universe`. Quando hai rilanciato è stata restituita la run precedente (creata QUANDO SPX era ancora vuoto), quindi `equity.spx` è ancora tutto $1000 → in vista % diventa una linea a 0% (piatta). BTC e Strategia dovrebbero invece variare ora — se vedi proprio tutto identico è perché la pagina ha ancora il risultato cached in memoria.
 
-**1. S&P 500 è davvero piatto — bug reale.**
-Tutte e 3 le fonti di `historical-sync` per SPX hanno fallito (`SPX_error: "Tutte le fonti S&P 500 hanno fallito"`), quindi `historical_ohlc` non ha nessuna riga `SPX`. Il backtest engine (`backtest.server.ts:148,246`) quando `spx` è vuoto pusha sempre `startCapital` → linea verde fissa a $1000.
+**"Strategia perde"** = lo dico come osservazione: con questi parametri (stop loss ampio, momentum su sleeve, cap F&G) su un periodo dove le alts hanno fatto peggio di BTC è plausibile. Non lo tocchiamo ora — prima rendiamolo configurabile e leggibile, poi se vuoi rivediamo i preset.
 
-Cause: Yahoo Finance CSV download (`query1.finance.yahoo.com/v7/finance/download`) è stato deprecato/blocca le richieste server-side da metà 2024; Stooq spesso 403/blocca le edge IP senza User-Agent; Alpha Vantage funziona solo se la key esiste (è presente nei secrets) ma il codice chiede `SPY` invece di `^GSPC` e potrebbe rate-limitare.
-
-**2. BTC NON è piatto nei dati** — ho verificato:
-```
-2024-07 $62k → 2024-12 $97k → 2025-03 $86k → 2025-10 $124k → 2026-03 $65k → 2026-06 $71k
-```
-Range completo: min $54k, max $124k (oltre 2x). Il problema è puramente di **resa grafica**:
-- L'asse Y è in dollari assoluti con `domain={["auto","auto"]}` e parte da 0.
-- Se la strategia compounda forte (es. $1000 → $5000) lo Y-axis va 0 → 5000 e la curva BTC che oscilla tra 1000 e 2300 appare schiacciata in basso, quasi una diagonale.
-- Inoltre stiamo confrontando BTC buy&hold (1.3x) con strategia leveraged-feel: visualizzazione non comparabile.
+**"Voglio partire da €200 modificabile"** = oggi `startCapital = 1000` è hardcoded in `backtest.functions.ts:101`. Da esporre come input.
 
 ## Modifiche
 
-### A. Fix data source S&P 500 (`supabase/functions/historical-sync/index.ts`)
+### 1. Capitale iniziale configurabile
 
-Riscrivo `fetchSpxCombo()` con fonti che funzionano realmente da edge function:
+**`src/lib/backtest.functions.ts`**
+- Aggiungo `startCapital: z.number().min(10).max(1_000_000)` all'`inputSchema`.
+- Lo passo a `runBacktest({ startCapital: data.startCapital, ... })`.
+- Includo `startCapital` nell'hash della cache → `${preset}|${years}y|${universe}|${startCapital}€` → invalida automaticamente la run vecchia.
 
-1. **Stooq** con `User-Agent` header (`Mozilla/5.0`) — spesso sblocca il 403.
-2. **Alpha Vantage** `TIME_SERIES_DAILY` su `SPY` ETF (già presente, lo lascio come 2°).
-3. **Nuovo: Stooq mirror via `?s=spy.us&i=d`** (più stabile di `^spx`).
-4. **Rimuovo Yahoo CSV** (endpoint morto da fine 2024) e **sostituisco con `query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5y&interval=1d`** — endpoint JSON ancora attivo, restituisce timestamp + close in `chart.result[0]`.
+**`src/routes/_authenticated/strategia.tsx` — `BacktestSection`**
+- Nuovo state `const [startCapital, setStartCapital] = useState(200)`.
+- Nuovo campo input numerico nella griglia (passa da `grid-cols-4` a `grid-cols-5` su md+):
+  ```
+  Capitale iniziale (€)  [200]
+  ```
+  con `min={10} step={50}`.
+- Passo `startCapital` nella mutation.
+- Label asse Y / tooltip restano in **%** (decisione presa nel turno precedente, comparabile).
+- Aggiungo sotto al chart una riga riassuntiva:
+  `Capitale finale: Strategia €X · BTC €Y · S&P €Z` calcolata da `startCapital * (1 + kpi.totalReturnPct/100)`.
 
-Ordine nuovo: Yahoo chart JSON → Stooq con UA → Alpha Vantage. Se almeno una restituisce >100 righe → salva.
+### 2. Bust della cache stale
 
-Poi rilancio `historical-sync` (in build mode) per popolare SPX.
+Cambiando il formato dell'hash, tutte le run precedenti diventano irraggiungibili e la prossima esecuzione gira fresca (con SPX popolato). Nessun DELETE serve.
 
-### B. Chart confrontabile (`src/routes/_authenticated/strategia.tsx`)
+### 3. Etichette in €
 
-Cambio il chart da "valore in $" a **"performance % normalizzata"**:
-- Aggiungo, lato client, un mapping `equity` → `{ date, strategy: (v/eq0-1)*100, btc: ..., spx: ... }`.
-- `YAxis` con `tickFormatter={(v) => `${v.toFixed(0)}%`}` e `domain={["auto","auto"]}` (può andare negativo).
-- Tooltip mostra `+X.X%`.
-- Etichetta asse / titolo: "Rendimento cumulato (%)".
-
-Così BTC (+30%), strategia (es. +400%) e SPX (+50%) sono tutti visibili e confrontabili, anche se hanno magnitudini diverse. È lo standard dei backtest tool (Portfolio Visualizer, TradingView).
+Sostituisco i `$` residui nei testi del backtest con `€` (è puramente cosmetico, il motore lavora su numeri puri; OHLC sono comunque indicizzati a `startCapital` per la curva). Nota: i prezzi storici crypto/SPX sono in USD, ma per il backtest che parte da `startCapital` e moltiplica per ratio è equivalente — assumiamo cambio fisso. Lo dichiaro implicitamente usando solo "€" come unità di display.
 
 ### Non tocco
-- `backtest.server.ts` (i KPI sono già in %).
-- DB schema, RLS, preset.
+- Engine (`backtest.server.ts`): già accetta `startCapital` come parametro.
+- Logica strategia / preset.
+- DB / RLS / migrations.
 
-## Verifica post-build
-1. Lancio `historical-sync` via curl → controllo `SPX: <n>` nel report.
-2. `SELECT COUNT(*) FROM historical_ohlc WHERE symbol='SPX'` > 100.
-3. Rilancio backtest dall'UI → vedo 3 curve distinte in % e SPX non più piatto.
+## Verifica
+1. Apro `/strategia`, scrivo `200` nel nuovo campo, lancio.
+2. Vedo 3 curve in % distinte (strategia, BTC arancione che oscilla, SPX verde non più piatto).
+3. Cambio a `500`, rilancio → nuova run (cache busted), curve identiche in % (è normale: il ratio non cambia) ma "Capitale finale" scala.

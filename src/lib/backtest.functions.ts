@@ -11,6 +11,7 @@ const inputSchema = z.object({
   preset: z.enum(["conservative", "balanced", "aggressive"]),
   years: z.number().int().min(1).max(5),
   universe: z.enum(["core", "core_sleeve"]),
+  startCapital: z.number().min(10).max(1_000_000).default(200),
 });
 
 export type BacktestPayload = {
