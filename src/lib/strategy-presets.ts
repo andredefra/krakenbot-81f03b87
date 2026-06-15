@@ -15,7 +15,9 @@ export type PresetValues = {
   fg_greed_cap: number;
   regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
   timeframe: string;
+  rebalance_days?: number;
 };
+
 
 export type PresetDescription = {
   summary: string;
