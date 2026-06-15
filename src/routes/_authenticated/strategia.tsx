@@ -289,7 +289,7 @@ function BacktestSection() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Preset</label>
             <Select value={preset} onValueChange={(v) => setPreset(v as typeof preset)}>
@@ -322,6 +322,17 @@ function BacktestSection() {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Capitale iniziale (€)</label>
+            <input
+              type="number"
+              min={10}
+              step={50}
+              value={startCapital}
+              onChange={(e) => setStartCapital(Math.max(10, Number(e.target.value) || 0))}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm tabular-nums"
+            />
+          </div>
           <div className="flex items-end">
             <Button onClick={() => runMut.mutate()} disabled={runMut.isPending} className="w-full">
               <RefreshCw className={`size-4 ${runMut.isPending ? "animate-spin" : ""}`} />
@@ -329,6 +340,7 @@ function BacktestSection() {
             </Button>
           </div>
         </div>
+
 
         {runMut.isPending && <Skeleton className="h-80 w-full" />}
 
