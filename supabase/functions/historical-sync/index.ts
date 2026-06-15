@@ -41,23 +41,21 @@ Deno.serve(async (req) => {
   const report: Record<string, unknown> = {};
   try {
 
-    // 1b. Storico esteso (>2 anni) via CoinGecko — fatto PRIMA di Kraken così Kraken
-    // sovrascrive l'overlap con OHLC completo. Solo close, ma il backtest usa solo close.
-    for (const [sym, cgId] of Object.entries(COINGECKO_IDS)) {
+    // 1b. Storico esteso (~5 anni) via CryptoCompare — fatto PRIMA di Kraken così Kraken
+    // sovrascrive l'overlap con OHLC completo. CryptoCompare = free, no key, 2000 candele/call.
+    for (const sym of CRYPTOCOMPARE_SYMBOLS) {
       try {
-        const rows = await fetchCoinGeckoDailyHistory(cgId, 5);
+        const rows = await fetchCryptoCompareDailyHistory(sym, 5);
         if (rows.length) {
-          await upsertOhlc(supa, sym, "coingecko", rows);
-          report[`${sym}_cg`] = rows.length;
+          await upsertOhlc(supa, sym, "cryptocompare", rows);
+          report[`${sym}_cc`] = rows.length;
         }
-        // throttle per rispettare il rate limit free (~10 req/min)
-        await new Promise((res) => setTimeout(res, 2500));
       } catch (e) {
-        report[`${sym}_cg_error`] = String(e);
+        report[`${sym}_cc_error`] = String(e);
       }
     }
 
-    // 1. Crypto via Kraken — ~720 giorni con OHLC completo, sovrascrive coingecko per il recente
+    // 1. Crypto via Kraken — ~720 giorni con OHLC completo, sovrascrive cryptocompare per il recente
     for (const [sym, pair] of Object.entries(CRYPTO_SYMBOLS)) {
       try {
         const rows = await fetchKrakenDailyHistory(pair, 5);
