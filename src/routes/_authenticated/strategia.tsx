@@ -370,9 +370,9 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia v2" />
-                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" />
-                  <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" />
+                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v2" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
