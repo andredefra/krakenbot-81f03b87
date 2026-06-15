@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,6 +8,16 @@ import { formatUsd, formatPct, pnlClass } from "@/lib/format";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TrendingUp, TrendingDown, Activity, Gauge } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
+
+type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
+const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
+  { key: "1H", label: "1H", ms: 60 * 60 * 1000 },
+  { key: "1D", label: "1G", ms: 24 * 60 * 60 * 1000 },
+  { key: "1W", label: "1S", ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: "1M", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
+  { key: "1Y", label: "1A", ms: 365 * 24 * 60 * 60 * 1000 },
+  { key: "ALL", label: "Tutto", ms: null },
+];
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
