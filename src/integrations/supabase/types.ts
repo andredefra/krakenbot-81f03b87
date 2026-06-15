@@ -14,7 +14,249 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      events_log: {
+        Row: {
+          component: string
+          created_at: string
+          id: string
+          level: Database["public"]["Enums"]["event_level"]
+          message: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          component: string
+          created_at?: string
+          id?: string
+          level?: Database["public"]["Enums"]["event_level"]
+          message: string
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          component?: string
+          created_at?: string
+          id?: string
+          level?: Database["public"]["Enums"]["event_level"]
+          message?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      portfolio_snapshots: {
+        Row: {
+          cash_value: number
+          created_at: string
+          id: string
+          positions_value: number
+          realized_pnl_day: number
+          total_value: number
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          cash_value: number
+          created_at?: string
+          id?: string
+          positions_value: number
+          realized_pnl_day?: number
+          total_value: number
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          cash_value?: number
+          created_at?: string
+          id?: string
+          positions_value?: number
+          realized_pnl_day?: number
+          total_value?: number
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      positions: {
+        Row: {
+          asset: string
+          closed_at: string | null
+          created_at: string
+          current_price: number | null
+          entry_price: number
+          entry_value: number
+          exit_price: number | null
+          exit_reason: string | null
+          exit_value: number | null
+          id: string
+          kraken_order_id: string | null
+          mode: Database["public"]["Enums"]["trade_mode"]
+          open_reason: string | null
+          opened_at: string
+          pnl: number | null
+          pnl_pct: number | null
+          qty: number
+          side: Database["public"]["Enums"]["position_side"]
+          status: Database["public"]["Enums"]["position_status"]
+          stop_price: number | null
+          trailing_high: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          closed_at?: string | null
+          created_at?: string
+          current_price?: number | null
+          entry_price: number
+          entry_value: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          exit_value?: number | null
+          id?: string
+          kraken_order_id?: string | null
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          open_reason?: string | null
+          opened_at?: string
+          pnl?: number | null
+          pnl_pct?: number | null
+          qty: number
+          side?: Database["public"]["Enums"]["position_side"]
+          status?: Database["public"]["Enums"]["position_status"]
+          stop_price?: number | null
+          trailing_high?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          closed_at?: string | null
+          created_at?: string
+          current_price?: number | null
+          entry_price?: number
+          entry_value?: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          exit_value?: number | null
+          id?: string
+          kraken_order_id?: string | null
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          open_reason?: string | null
+          opened_at?: string
+          pnl?: number | null
+          pnl_pct?: number | null
+          qty?: number
+          side?: Database["public"]["Enums"]["position_side"]
+          status?: Database["public"]["Enums"]["position_status"]
+          stop_price?: number | null
+          trailing_high?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sentiment_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          raw: Json | null
+          scope: string
+          score: number | null
+          source: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          raw?: Json | null
+          scope?: string
+          score?: number | null
+          source: string
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          raw?: Json | null
+          scope?: string
+          score?: number | null
+          source?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      settings: {
+        Row: {
+          asset_universe: Json
+          capital_reference: number
+          created_at: string
+          daily_loss_limit_pct: number
+          enabled_sentiment_sources: Json
+          id: string
+          is_running: boolean
+          kill_switch_floor: number
+          max_position_pct: number
+          max_positions: number
+          min_target_pct: number
+          mode: Database["public"]["Enums"]["trade_mode"]
+          sentiment_weights: Json
+          stop_loss_pct: number
+          take_profit_pct: number
+          timeframe: string
+          trailing_activate_pct: number
+          trailing_gap_pct: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset_universe?: Json
+          capital_reference?: number
+          created_at?: string
+          daily_loss_limit_pct?: number
+          enabled_sentiment_sources?: Json
+          id?: string
+          is_running?: boolean
+          kill_switch_floor?: number
+          max_position_pct?: number
+          max_positions?: number
+          min_target_pct?: number
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          sentiment_weights?: Json
+          stop_loss_pct?: number
+          take_profit_pct?: number
+          timeframe?: string
+          trailing_activate_pct?: number
+          trailing_gap_pct?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset_universe?: Json
+          capital_reference?: number
+          created_at?: string
+          daily_loss_limit_pct?: number
+          enabled_sentiment_sources?: Json
+          id?: string
+          is_running?: boolean
+          kill_switch_floor?: number
+          max_position_pct?: number
+          max_positions?: number
+          min_target_pct?: number
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          sentiment_weights?: Json
+          stop_loss_pct?: number
+          take_profit_pct?: number
+          timeframe?: string
+          trailing_activate_pct?: number
+          trailing_gap_pct?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +265,10 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      event_level: "info" | "warn" | "error"
+      position_side: "long"
+      position_status: "open" | "closed"
+      trade_mode: "paper" | "live"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +395,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      event_level: ["info", "warn", "error"],
+      position_side: ["long"],
+      position_status: ["open", "closed"],
+      trade_mode: ["paper", "live"],
+    },
   },
 } as const
