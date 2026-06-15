@@ -48,6 +48,8 @@ export type Database = {
           id: string
           level: Database["public"]["Enums"]["event_level"]
           message: string
+          mode: Database["public"]["Enums"]["trade_mode"]
+          payload: Json | null
           ts: string
           user_id: string
         }
@@ -57,6 +59,8 @@ export type Database = {
           id?: string
           level?: Database["public"]["Enums"]["event_level"]
           message: string
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          payload?: Json | null
           ts?: string
           user_id: string
         }
@@ -66,6 +70,8 @@ export type Database = {
           id?: string
           level?: Database["public"]["Enums"]["event_level"]
           message?: string
+          mode?: Database["public"]["Enums"]["trade_mode"]
+          payload?: Json | null
           ts?: string
           user_id?: string
         }
@@ -76,6 +82,7 @@ export type Database = {
           cash_value: number
           created_at: string
           id: string
+          mode: Database["public"]["Enums"]["trade_mode"]
           positions_value: number
           realized_pnl_day: number
           total_value: number
@@ -86,6 +93,7 @@ export type Database = {
           cash_value: number
           created_at?: string
           id?: string
+          mode?: Database["public"]["Enums"]["trade_mode"]
           positions_value: number
           realized_pnl_day?: number
           total_value: number
@@ -96,6 +104,7 @@ export type Database = {
           cash_value?: number
           created_at?: string
           id?: string
+          mode?: Database["public"]["Enums"]["trade_mode"]
           positions_value?: number
           realized_pnl_day?: number
           total_value?: number
