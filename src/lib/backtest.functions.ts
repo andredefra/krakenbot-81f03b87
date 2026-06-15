@@ -31,7 +31,60 @@ const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
 function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `v3|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+  return `v4|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+}
+
+// PostgREST applica un max-rows interno (1000) che .range(0, 9999) NON sovrascrive:
+// per finestre > ~2.7 anni la query veniva troncata silenziosamente. Pagina finché
+// la risposta restituisce esattamente PAGE righe.
+const PAGE_SIZE = 1000;
+async function fetchOhlcAllPages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  symbol: string,
+  sinceStr: string,
+): Promise<Array<{ date: string; close: number }>> {
+  const out: Array<{ date: string; close: number }> = [];
+  let from = 0;
+  // safety cap (15k rows = ~40 anni daily)
+  while (from < 15000) {
+    const r = await supabase
+      .from("historical_ohlc")
+      .select("date,close")
+      .eq("symbol", symbol)
+      .gte("date", sinceStr)
+      .order("date", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (r.error) throw new Error(r.error.message);
+    const rows = r.data ?? [];
+    for (const row of rows) out.push({ date: row.date as string, close: Number(row.close) });
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
+async function fetchFgAllPages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  sinceStr: string,
+): Promise<Array<{ date: string; value: number }>> {
+  const out: Array<{ date: string; value: number }> = [];
+  let from = 0;
+  while (from < 15000) {
+    const r = await supabase
+      .from("fg_history")
+      .select("date,value")
+      .gte("date", sinceStr)
+      .order("date", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (r.error) throw new Error(r.error.message);
+    const rows = r.data ?? [];
+    for (const row of rows) out.push({ date: row.date as string, value: row.value });
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
 }
 
 export const runBacktestFn = createServerFn({ method: "POST" })
