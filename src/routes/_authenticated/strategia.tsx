@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Shield, Scale, Flame, Settings as SettingsIcon, TrendingUp, RefreshCw } from "lucide-react";
+import { Shield, Scale, Flame, Settings as SettingsIcon, TrendingUp, RefreshCw, ChevronDown, Coins, LogIn, LogOut, ThumbsUp, ThumbsDown } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -143,15 +144,76 @@ function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; curr
           <Stat label="Daily limit" value={`−${v.daily_loss_limit_pct}%`} />
           <Stat label="F&G cap" value={v.fg_greed_cap.toString()} />
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-2 text-xs flex-wrap">
           <Badge variant="outline">Rischio {preset.risk}</Badge>
           <Badge variant="outline">Varianza {preset.variance}</Badge>
+          <Badge variant="outline">{preset.description?.tradesPerMonth} trade/mese</Badge>
         </div>
         <Button onClick={onApply} disabled={current} className="w-full" variant={current ? "outline" : "default"}>
           {current ? "Già attivo" : "Applica preset"}
         </Button>
+        {preset.description && <PresetRecap d={preset.description} />}
       </CardContent>
     </Card>
+  );
+}
+
+function PresetRecap({ d }: { d: NonNullable<StrategyPreset["description"]> }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group flex w-full items-center justify-between text-xs text-muted-foreground hover:text-foreground transition py-1.5 border-t border-border/40">
+        <span className="font-medium">Cosa prevede questa strategia</span>
+        <ChevronDown className="size-3.5 group-data-[state=open]:rotate-180 transition" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 pt-2 text-xs">
+        <p className="text-muted-foreground leading-relaxed">{d.summary}</p>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 font-medium"><Coins className="size-3.5" /> Asset tradati</div>
+          <div className="flex flex-wrap gap-1">
+            {d.assets.map((a) => (
+              <Badge key={a} variant="secondary" className="text-[10px] font-normal">{a}</Badge>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 font-medium"><LogIn className="size-3.5 text-green-500" /> Quando entra</div>
+          <ul className="space-y-0.5 text-muted-foreground pl-1">
+            {d.entryRules.map((r) => <li key={r}>• {r}</li>)}
+          </ul>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 font-medium"><LogOut className="size-3.5 text-red-500" /> Quando esce</div>
+          <ul className="space-y-0.5 text-muted-foreground pl-1">
+            {d.exitRules.map((r) => <li key={r}>• {r}</li>)}
+          </ul>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          <div className="flex items-start gap-1.5">
+            <ThumbsUp className="size-3.5 text-green-500 shrink-0 mt-0.5" />
+            <div><span className="font-medium">Ideale per:</span> <span className="text-muted-foreground">{d.idealFor}</span></div>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <ThumbsDown className="size-3.5 text-red-500 shrink-0 mt-0.5" />
+            <div><span className="font-medium">Evita se:</span> <span className="text-muted-foreground">{d.avoidIf}</span></div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Drawdown atteso</div>
+            <div className="font-medium tabular-nums">{d.expectedDrawdown}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Trade / mese</div>
+            <div className="font-medium tabular-nums">{d.tradesPerMonth}</div>
+          </div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
