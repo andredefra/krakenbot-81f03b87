@@ -16,15 +16,26 @@ const inputSchema = z.object({
 
 export type BacktestPayload = {
   cached: boolean;
-  equity: Array<{ date: string; strategy: number; btc: number; spx: number }>;
+  equity: Array<{ date: string; strategy: number; btc: number; spx: number; btcRegime: number }>;
   strategyKpis: { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
   btcKpis: BacktestPayload["strategyKpis"];
   spxKpis: BacktestPayload["strategyKpis"];
+  btcRegimeKpis: BacktestPayload["strategyKpis"];
   tradesCount: number;
   universe: string;
   preset: string;
   years: number;
 };
+
+// Universe = which crypto assets get traded (BTC always loaded for regime + benchmark)
+const CORE_ASSETS = ["ETH", "SOL"];
+const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+
+function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
+  // v2 = BTC-core + momentum rotation engine. Bump invalidates legacy runs.
+  return `v2|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+}
+
 
 // Universe = which crypto assets get traded (BTC always loaded for regime + benchmark)
 const CORE_ASSETS = ["ETH", "SOL"];
