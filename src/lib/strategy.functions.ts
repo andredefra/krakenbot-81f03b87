@@ -14,13 +14,10 @@ export const applyStrategyPreset = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const preset = getPreset(data.preset as PresetId);
     if (!preset.values) throw new Error("Preset senza valori");
-    const { rebalance_days: _rb, ...settingsValues } = preset.values;
-    void _rb;
     const patch = {
-      ...settingsValues,
+      ...preset.values,
       strategy_preset: preset.id,
     };
-
     const { error } = await context.supabase
       .from("settings")
       .update(patch)

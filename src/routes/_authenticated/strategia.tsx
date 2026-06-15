@@ -350,18 +350,16 @@ function BacktestSection() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={(() => {
-                    const raw = runMut.data.equity as Array<{ date: string; strategy: number; btc: number; spx: number; btcRegime: number }>;
+                    const raw = runMut.data.equity as Array<{ date: string; strategy: number; btc: number; spx: number }>;
                     if (!raw.length) return [];
                     const s0 = raw[0].strategy || 1;
                     const b0 = raw[0].btc || 1;
                     const p0 = raw[0].spx || 1;
-                    const r0 = raw[0].btcRegime || 1;
                     return raw.map((r) => ({
                       date: r.date,
                       strategy: (r.strategy / s0 - 1) * 100,
                       btc: (r.btc / b0 - 1) * 100,
                       spx: (r.spx / p0 - 1) * 100,
-                      btcRegime: (r.btcRegime / r0 - 1) * 100,
                     }));
                   })()}
                 >
@@ -373,9 +371,8 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2.5} name="Strategia" />
+                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia" />
                   <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" />
-                  <Line type="monotone" dataKey="btcRegime" stroke="#a855f7" dot={false} strokeWidth={1.5} strokeDasharray="4 3" name="BTC + SMA200" />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" />
                 </LineChart>
               </ResponsiveContainer>
@@ -388,36 +385,28 @@ function BacktestSection() {
               const sV = final(runMut.data.strategyKpis.totalReturnPct);
               const bV = final(runMut.data.btcKpis.totalReturnPct);
               const pV = final(runMut.data.spxKpis.totalReturnPct);
-              const rV = final(runMut.data.btcRegimeKpis.totalReturnPct);
               return (
                 <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
                   <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
                   <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
                   <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
-                  <span>BTC+SMA200 <strong className={`tabular-nums ${cls(rV)}`}>{eur(rV)}</strong></span>
                   <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
                 </div>
               );
             })()}
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
-              <KpiCard title="BTC + SMA200" kpis={runMut.data.btcRegimeKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong>Come funziona:</strong> capitale in BTC quando BTC è sopra la sua SMA200 giornaliera, ruota su top alt per momentum 30g (BTC sempre incluso, equal-weight), esce in cash sotto SMA200.
-              La linea viola tratteggiata <em>BTC+SMA200</em> è una baseline triviale (BTC sopra SMA200, cash sotto): se la strategia non la batte, la rotazione non sta aggiungendo valore.
-            </p>
 
             {runMut.data.cached && (
               <p className="text-xs text-muted-foreground">📦 Risultato dalla cache (valido 24h)</p>
             )}
           </>
         )}
-
 
         {!runMut.data && !runMut.isPending && (
           <Card className="border-dashed">
