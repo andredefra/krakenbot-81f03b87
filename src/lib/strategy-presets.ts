@@ -1,20 +1,47 @@
-// Client-safe strategy presets. Applying a preset updates settings table.
-// Allineato a STRATEGIA.md §3 + nuovi parametri regime_filter / fg_greed_cap.
+// Client-safe strategy presets — v2 Core-Satellite (vedi STRATEGIA.md v2).
+// I tre preset cambiano allocazione Core/Satellite, rischio per trade, tetto trade
+// mensile, cooldown e filtri universo. I pesi di sentiment vengono derivati dal
+// preset attivo (vedi `deriveSentimentWeights`).
 
 export type PresetId = "conservative" | "balanced" | "aggressive" | "custom";
 
 export type PresetValues = {
-  max_positions: number;
-  max_position_pct: number;
-  stop_loss_pct: number;
+  // Allocazione
+  core_satellite_split: { core: number; satellite: number };
+  core_weights: { BTC: number; ETH: number };
+
+  // Filtri universo (cancelli liquidità)
+  min_volume_24h: number;
+  max_spread_pct: number;
+  min_listing_age_days: number;
+
+  // Regime
+  macro_ma_period: number;
+  mid_ma_period: number;
+  fg_greed_cap: number;
+
+  // Satellite — gestione posizione
+  max_satellite_positions: number;
+  risk_per_trade_pct: number;
+  stop_atr_mult: number;
+  stop_min_pct: number;
   trailing_activate_pct: number;
   trailing_gap_pct: number;
   take_profit_pct: number;
   min_target_pct: number;
+
+  // Disciplina commissioni
+  monthly_trade_cap: number;
+  cooldown_hours: number;
+
+  // Globali
   daily_loss_limit_pct: number;
-  fg_greed_cap: number;
-  regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
   timeframe: string;
+
+  // Compat — mappate alle vecchie colonne (per non rompere queries esistenti)
+  max_positions: number;       // = max_satellite_positions
+  max_position_pct: number;    // ≈ risk_per_trade_pct * 10 (size indicativa)
+  stop_loss_pct: number;       // = stop_min_pct (floor)
 };
 
 export type PresetDescription = {
@@ -39,131 +66,167 @@ export type StrategyPreset = {
   description: PresetDescription | null;
 };
 
+const UNIVERSE_DEFAULTS = {
+  min_volume_24h: 5_000_000,
+  max_spread_pct: 0.3,
+  min_listing_age_days: 60,
+};
+
 export const PRESETS: StrategyPreset[] = [
   {
     id: "conservative",
     name: "Conservativo",
-    tagline: "Capitale protetto, ingressi rari ma di qualità",
+    tagline: "Core ampio, satellite raro — drawdown ridotto",
     risk: "Bassa",
     variance: "Bassa",
-    expected: "Drawdown contenuto, crescita lenta",
+    expected: "Cattura ~70% del trend con DD più piccolo",
     values: {
-      max_positions: 2,
-      max_position_pct: 20,
-      stop_loss_pct: 7,
-      trailing_activate_pct: 8,
-      trailing_gap_pct: 5,
-      take_profit_pct: 15,
-      min_target_pct: 3,
-      daily_loss_limit_pct: 5,
+      core_satellite_split: { core: 0.75, satellite: 0.25 },
+      core_weights: { BTC: 0.7, ETH: 0.3 },
+      ...UNIVERSE_DEFAULTS,
+      macro_ma_period: 200,
+      mid_ma_period: 50,
       fg_greed_cap: 70,
-      regime_filter: "btc_sma50",
+      max_satellite_positions: 1,
+      risk_per_trade_pct: 2,
+      stop_atr_mult: 2,
+      stop_min_pct: 12,
+      trailing_activate_pct: 15,
+      trailing_gap_pct: 10,
+      take_profit_pct: 25,
+      min_target_pct: 5,
+      monthly_trade_cap: 4,
+      cooldown_hours: 72,
+      daily_loss_limit_pct: 5,
       timeframe: "4h",
+      max_positions: 1,
+      max_position_pct: 20,
+      stop_loss_pct: 12,
     },
     description: {
       summary:
-        "Esposizione minima al mercato crypto. Solo i due asset più liquidi, filtri severi sull'ingresso, stop stretti. Pensato per chi vuole partecipare al ciclo crypto senza perdere il sonno.",
-      assets: ["BTC", "ETH"],
+        "75% in core BTC/ETH (70/30) con filtro macro a 200gg, 25% in sleeve satellite molto selettivo (max 1 posizione, 4 trade/mese, cooldown 72h). Pensato per chi vuole partecipare al ciclo crypto con la minore varianza possibile.",
+      assets: ["Core: BTC, ETH", "Satellite: tutto Kraken (universo dinamico)"],
       entryRules: [
-        "BTC sopra la sua SMA50 (mercato in trend rialzista)",
-        "Fear & Greed ≤ 70 (no euforia)",
-        "Segnale momentum su timeframe 4h",
-        "Target minimo atteso ≥ 3%",
+        "Macro: BTC sopra SMA200 (core investito)",
+        "Medio: BTC sopra SMA50 + F&G ≤ 70 (satellite armato)",
+        "Universo: volume 24h > 5M USD, spread < 0.3%, età > 60g",
+        "Trend up + breakout con volume, target ≥ +5%",
       ],
       exitRules: [
-        "Stop loss fisso a −7% dall'ingresso",
-        "Trailing stop attivato dopo +8% di profitto, gap 5%",
-        "Take-profit parziale a +15%",
-        "Kill-switch giornaliero a −5%",
+        "Stop: max(12%, 2×ATR) come ordine reale Kraken",
+        "Trailing +15% / −10%",
+        "Inversione trend o regime medio risk-off",
+        "Cooldown 72h prima di rientrare sullo stesso asset",
       ],
-      idealFor: "Chi vuole esposizione crypto minima e dorme sereno",
-      avoidIf: "Cerchi rendimenti annuali sopra il 30%",
-      expectedDrawdown: "−8% / −12%",
-      tradesPerMonth: "1-3",
+      idealFor: "Esposizione crypto con drawdown ridotto",
+      avoidIf: "Vuoi rendimenti potenzialmente più alti del buy & hold",
+      expectedDrawdown: "−10% / −15%",
+      tradesPerMonth: "≤ 4",
     },
   },
   {
     id: "balanced",
     name: "Bilanciato",
-    tagline: "Default raccomandato — equilibrio rischio/rendimento",
+    tagline: "Default v2 — 60% core, 40% satellite attivo",
     risk: "Media",
     variance: "Media",
-    expected: "Crescita moderata, drawdown gestiti",
+    expected: "Mira a Sharpe più alto del buy & hold",
     values: {
-      max_positions: 3,
-      max_position_pct: 30,
-      stop_loss_pct: 10,
-      trailing_activate_pct: 10,
-      trailing_gap_pct: 7,
-      take_profit_pct: 20,
-      min_target_pct: 2,
-      daily_loss_limit_pct: 8,
+      core_satellite_split: { core: 0.6, satellite: 0.4 },
+      core_weights: { BTC: 0.6, ETH: 0.4 },
+      ...UNIVERSE_DEFAULTS,
+      macro_ma_period: 200,
+      mid_ma_period: 50,
       fg_greed_cap: 75,
-      regime_filter: "btc_sma50",
-      timeframe: "1h",
+      max_satellite_positions: 2,
+      risk_per_trade_pct: 3,
+      stop_atr_mult: 2,
+      stop_min_pct: 12,
+      trailing_activate_pct: 12,
+      trailing_gap_pct: 8,
+      take_profit_pct: 25,
+      min_target_pct: 4,
+      monthly_trade_cap: 8,
+      cooldown_hours: 48,
+      daily_loss_limit_pct: 8,
+      timeframe: "4h",
+      max_positions: 2,
+      max_position_pct: 30,
+      stop_loss_pct: 12,
     },
     description: {
       summary:
-        "Equilibrio tra protezione e partecipazione. Core di tre asset + sleeve momentum sulle top-10 per market cap. Filtri di regime attivi ma non eccessivi.",
-      assets: ["BTC", "ETH", "SOL", "+ sleeve momentum top-10 mcap"],
+        "60% core BTC/ETH (60/40) con filtro macro a 200gg, 40% sleeve satellite di momentum (max 2 posizioni, 8 trade/mese, cooldown 48h). È il default raccomandato dalla Strategia v2.",
+      assets: ["Core: BTC, ETH", "Satellite: tutto Kraken (universo dinamico)"],
       entryRules: [
-        "BTC sopra la sua SMA50",
-        "Fear & Greed ≤ 75",
-        "Segnale momentum su timeframe 1h",
-        "Target minimo atteso ≥ 2%",
+        "Macro: BTC sopra SMA200 (core investito)",
+        "Medio: BTC sopra SMA50 + F&G ≤ 75 (satellite armato)",
+        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g",
+        "Trend up + breakout volume, target ≥ +4%, filtro volatilità",
       ],
       exitRules: [
-        "Stop loss fisso a −10% dall'ingresso",
-        "Trailing stop attivato dopo +10%, gap 7%",
-        "Take-profit parziale a +20%",
-        "Kill-switch giornaliero a −8%",
+        "Stop: max(12%, 2×ATR) come ordine reale Kraken",
+        "Trailing +12% / −8%, take-profit parziale a +25%",
+        "Inversione trend (SMA20<50 su 4h) o regime medio risk-off",
+        "Cooldown 48h sullo stesso asset",
       ],
-      idealFor: "Chi vuole crescita reale ma con regole chiare",
-      avoidIf: "Non tolleri drawdown nell'ordine del −15%",
-      expectedDrawdown: "−12% / −18%",
-      tradesPerMonth: "3-8",
+      idealFor: "Equilibrio rischio/rendimento con regole disciplinate",
+      avoidIf: "Vuoi semplicemente comprare e tenere senza filtri",
+      expectedDrawdown: "−15% / −22%",
+      tradesPerMonth: "≤ 8",
     },
   },
   {
     id: "aggressive",
     name: "Aggressivo",
-    tagline: "Massima esposizione — accetti drawdown >20%",
+    tagline: "Satellite più ampio, più trade — accetti varianza",
     risk: "Alta",
     variance: "Alta",
-    expected: "Crescita potenziale alta, swing intensi",
+    expected: "Cattura più upside in bull, drawdown maggiori",
     values: {
-      max_positions: 4,
-      max_position_pct: 40,
-      stop_loss_pct: 12,
+      core_satellite_split: { core: 0.45, satellite: 0.55 },
+      core_weights: { BTC: 0.5, ETH: 0.5 },
+      ...UNIVERSE_DEFAULTS,
+      macro_ma_period: 200,
+      mid_ma_period: 50,
+      fg_greed_cap: 85,
+      max_satellite_positions: 3,
+      risk_per_trade_pct: 4,
+      stop_atr_mult: 1.8,
+      stop_min_pct: 10,
       trailing_activate_pct: 12,
       trailing_gap_pct: 8,
-      take_profit_pct: 25,
-      min_target_pct: 1.5,
+      take_profit_pct: 30,
+      min_target_pct: 3,
+      monthly_trade_cap: 12,
+      cooldown_hours: 24,
       daily_loss_limit_pct: 10,
-      fg_greed_cap: 85,
-      regime_filter: "btc_sma200",
-      timeframe: "1h",
+      timeframe: "4h",
+      max_positions: 3,
+      max_position_pct: 40,
+      stop_loss_pct: 10,
     },
     description: {
       summary:
-        "Massima ricerca di rendimento. Sleeve momentum esteso, filtri di regime permissivi (SMA200 invece di SMA50), stop più larghi per assorbire la volatilità.",
-      assets: ["BTC", "ETH", "SOL", "+ sleeve momentum top-20 mcap"],
+        "45% core BTC/ETH (50/50), 55% sleeve satellite più aggressivo (max 3 posizioni, 12 trade/mese, cooldown 24h). Più esposizione alle alt e meno filtro sentiment.",
+      assets: ["Core: BTC, ETH", "Satellite: tutto Kraken (universo dinamico)"],
       entryRules: [
-        "BTC sopra la sua SMA200 (filtro permissivo)",
-        "Fear & Greed ≤ 85 (entra anche in euforia)",
-        "Segnale momentum su timeframe 1h",
-        "Target minimo atteso ≥ 1.5%",
+        "Macro: BTC sopra SMA200",
+        "Medio: BTC sopra SMA50 + F&G ≤ 85 (filtro permissivo)",
+        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g",
+        "Trend + breakout, target ≥ +3%",
       ],
       exitRules: [
-        "Stop loss fisso a −12% dall'ingresso",
-        "Trailing stop attivato dopo +12%, gap 8%",
-        "Take-profit parziale a +25%",
-        "Kill-switch giornaliero a −10%",
+        "Stop: max(10%, 1.8×ATR)",
+        "Trailing +12% / −8%, take-profit parziale a +30%",
+        "Inversione trend o regime medio risk-off",
+        "Cooldown 24h sullo stesso asset",
       ],
-      idealFor: "Vuoi rendimenti potenzialmente alti e tolleri swing forti",
-      avoidIf: "Non puoi vedere il capitale scendere del 25%",
-      expectedDrawdown: "−20% / −30%",
-      tradesPerMonth: "5-15",
+      idealFor: "Cerchi più upside accettando swing forti",
+      avoidIf: "Non puoi vedere il capitale scendere del 30%",
+      expectedDrawdown: "−25% / −35%",
+      tradesPerMonth: "≤ 12",
     },
   },
   {
@@ -182,36 +245,65 @@ export function getPreset(id: PresetId): StrategyPreset {
   return PRESETS.find((p) => p.id === id) ?? PRESETS[1];
 }
 
-// Campi confrontati per la detection. `timeframe` escluso (stringa libera).
-const DETECT_KEYS: Array<keyof PresetValues> = [
-  "max_positions",
-  "max_position_pct",
-  "stop_loss_pct",
+// Campi confrontati per la detection. Le jsonb sono serializzate.
+const DETECT_NUMERIC: Array<keyof PresetValues> = [
+  "max_satellite_positions",
+  "risk_per_trade_pct",
+  "stop_atr_mult",
+  "stop_min_pct",
   "trailing_activate_pct",
   "trailing_gap_pct",
   "take_profit_pct",
   "min_target_pct",
+  "monthly_trade_cap",
+  "cooldown_hours",
   "daily_loss_limit_pct",
   "fg_greed_cap",
-  "regime_filter",
 ];
 
-/**
- * Confronta una riga `settings` con tutti i preset noti.
- * Ritorna l'id del preset che matcha esattamente, o "custom" altrimenti.
- */
 export function detectPreset(settings: Record<string, unknown> | null | undefined): PresetId {
   if (!settings) return "custom";
   for (const p of PRESETS) {
     if (!p.values) continue;
-    const match = DETECT_KEYS.every((k) => {
-      const a = settings[k as string];
-      const b = p.values![k];
-      // numerico vs stringa numerica: confronto loose via Number
-      if (typeof b === "number") return Number(a) === b;
-      return String(a) === String(b);
-    });
-    if (match) return p.id;
+    const numericMatch = DETECT_NUMERIC.every((k) => Number(settings[k as string]) === Number(p.values![k]));
+    if (!numericMatch) continue;
+    // split jsonb
+    const split = (settings.core_satellite_split ?? {}) as Record<string, number>;
+    const targetSplit = p.values.core_satellite_split;
+    if (Number(split.core) !== targetSplit.core || Number(split.satellite) !== targetSplit.satellite) continue;
+    return p.id;
   }
   return "custom";
+}
+
+// ============================================================================
+// Sentiment weights derivati dal preset attivo + sorgenti abilitate
+// ============================================================================
+// Strategia v2: F&G è "gate" sempre primario; LunarCrush e Santiment sono
+// conferme. I preset più aggressivi danno più peso al social per cogliere
+// momentum, i conservativi danno più peso al F&G come freno.
+
+const SENTIMENT_BASE: Record<Exclude<PresetId, "custom">, Record<string, number>> = {
+  conservative: { fear_greed: 0.7, lunarcrush: 0.2, santiment: 0.1, news: 0.0 },
+  balanced:     { fear_greed: 0.5, lunarcrush: 0.3, santiment: 0.2, news: 0.0 },
+  aggressive:   { fear_greed: 0.3, lunarcrush: 0.4, santiment: 0.3, news: 0.0 },
+};
+
+const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "news"] as const;
+
+export function deriveSentimentWeights(
+  presetId: PresetId,
+  enabled: Record<string, boolean>,
+): Record<string, number> {
+  const base = SENTIMENT_BASE[presetId === "custom" ? "balanced" : presetId];
+  const activeKeys = SENTIMENT_SOURCES.filter((k) => enabled[k]);
+  if (activeKeys.length === 0) {
+    return Object.fromEntries(SENTIMENT_SOURCES.map((k) => [k, 0]));
+  }
+  const sum = activeKeys.reduce((s, k) => s + (base[k] || 0), 0);
+  const out: Record<string, number> = {};
+  for (const k of SENTIMENT_SOURCES) {
+    out[k] = enabled[k] && sum > 0 ? Math.round(((base[k] || 0) / sum) * 100) / 100 : 0;
+  }
+  return out;
 }
