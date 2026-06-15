@@ -132,12 +132,7 @@ Deno.serve(async (req) => {
       if (!uerr) { upserts += 1; if (eligible) eligibleCount += 1; }
     }
 
-    await supa.from("events_log").insert({
-      user_id: "00000000-0000-0000-0000-000000000000",
-      level: "info",
-      component: "universe-scanner",
-      message: `Scan completato: ${upserts} asset, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d)`,
-    });
+    console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d)`);
 
     return new Response(JSON.stringify({ ok: true, upserts, eligibleCount, thresholds: { minVol, maxSpread, minAge } }), {
       headers: { ...corsHeaders, "content-type": "application/json" },
