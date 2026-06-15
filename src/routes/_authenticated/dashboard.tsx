@@ -89,19 +89,24 @@ function DashboardPage() {
   const weekDelta = latest && weekAgo ? latest.total_value - weekAgo.total_value : null;
   const weekDeltaPct = latest && weekAgo && weekAgo.total_value > 0 ? ((latest.total_value - weekAgo.total_value) / weekAgo.total_value) * 100 : null;
 
-  const regimeRaw = (regimeQuery.data?.raw ?? null) as { label?: string } | null;
-  const regimeLabel = regimeRaw?.label ?? (regimeQuery.data?.score === 1 ? "risk-on" : regimeQuery.data?.score === 0 ? "risk-off" : "—");
   const fgRaw = (fgQuery.data?.raw ?? null) as { classification?: string } | null;
   const fgLabel = fgRaw?.classification ?? "—";
+
+  const diag = diagQuery.data;
+  const macroOn = diag?.macro.regime === "risk-on";
+  const mesoOn = diag?.meso.regime === "risk-on";
+  const coreAssets = diag ? Object.entries(diag.core.targetWeights).map(([a, w]) => `${a} ${Math.round((w as number) * 100)}%`).join(" / ") : "";
+  const eligibleCount = diag?.universe.filter((u) => u.eligible).length ?? 0;
+  const universeEmpty = diag?.hasSnapshot && eligibleCount === 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Stato attuale del portafoglio e del motore</p>
+        <p className="text-sm text-muted-foreground">Stato attuale del portafoglio e del motore (v2 Core+Satellite)</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <KpiCard
           title="Valore portafoglio"
           icon={<Gauge className="size-4" />}
@@ -124,14 +129,58 @@ function DashboardPage() {
           valueClass={pnlClass(weekDelta)}
           loading={snapshotsQuery.isLoading}
         />
-        <KpiCard
-          title="Regime / F&G"
-          icon={<Activity className="size-4" />}
-          value={regimeLabel}
-          sub={fgQuery.data?.score != null ? `F&G ${Math.round(fgQuery.data.score)} · ${fgLabel}` : "F&G —"}
-          loading={fgQuery.isLoading || regimeQuery.isLoading}
-        />
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Macro → Core</CardTitle>
+            <Compass className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {diagQuery.isLoading ? (
+              <Skeleton className="h-7 w-28" />
+            ) : !diag?.hasSnapshot ? (
+              <div className="text-sm text-muted-foreground">—</div>
+            ) : (
+              <>
+                <Badge variant="outline" className={macroOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"}>
+                  ● {macroOn ? "RISK-ON" : "RISK-OFF"}
+                </Badge>
+                <div className="text-xs text-muted-foreground mt-2" title={diag.macro.reason ?? ""}>
+                  Core: {diag.core.invested ? `INVESTITO (${coreAssets})` : "IN STABLE"}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Meso → Satellite</CardTitle>
+            <Activity className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {diagQuery.isLoading ? (
+              <Skeleton className="h-7 w-28" />
+            ) : !diag?.hasSnapshot ? (
+              <div className="text-sm text-muted-foreground">—</div>
+            ) : (
+              <>
+                <Badge variant="outline" className={mesoOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"}>
+                  ● {mesoOn ? "RISK-ON" : "RISK-OFF"}
+                </Badge>
+                <div className="text-xs text-muted-foreground mt-2" title={diag.meso.reason ?? ""}>
+                  Satellite {diag.satellite.open}/{diag.satellite.max} · F&G {fgQuery.data?.score != null ? Math.round(fgQuery.data.score) : "—"} {fgLabel !== "—" ? `(${fgLabel})` : ""}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {universeEmpty && (
+        <div className="flex items-center gap-2 text-sm text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+          <AlertCircle className="size-4" />
+          Universo dinamico vuoto — il satellite usa il fallback statico. Controlla lo scanner.
+        </div>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 gap-2 flex-wrap">
