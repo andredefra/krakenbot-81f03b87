@@ -157,6 +157,27 @@ async function fetchKrakenDailyHistory(pair: string, years: number): Promise<Ohl
   return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// CoinGecko free public API — `days=N` con N>=90 ritorna granularità daily automaticamente.
+// Restituisce solo close; usato per estendere lo storico oltre i ~720 giorni di Kraken.
+async function fetchCoinGeckoDailyHistory(coinId: string, years: number): Promise<OhlcRow[]> {
+  const days = Math.ceil(years * 365.25);
+  const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`;
+  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; KrakenBot/1.0)" } });
+  if (!r.ok) throw new Error(`CoinGecko HTTP ${r.status}`);
+  const j = await r.json();
+  const prices = (j?.prices ?? []) as Array<[number, number]>;
+  if (!prices.length) return [];
+  // Dedup per giorno: tieni l'ultimo close del giorno
+  const byDate = new Map<string, number>();
+  for (const [ts, price] of prices) {
+    if (!isFinite(price)) continue;
+    const d = new Date(ts).toISOString().slice(0, 10);
+    byDate.set(d, price);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, close]) => ({ date, open: close, high: close, low: close, close, volume: 0 }));
+
 async function upsertOhlc(supa: ReturnType<typeof createClient>, symbol: string, source: string, rows: OhlcRow[]) {
   const payload = rows.map((r) => ({ symbol, source, ...r }));
   for (let i = 0; i < payload.length; i += 500) {
