@@ -377,6 +377,30 @@ export type Database = {
         }
         Relationships: []
       }
+      tax_reminders_sent: {
+        Row: {
+          days_offset: number
+          deadline_id: string
+          id: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          days_offset: number
+          deadline_id: string
+          id?: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          days_offset?: number
+          deadline_id?: string
+          id?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trade_fees: {
         Row: {
           cost: number | null
