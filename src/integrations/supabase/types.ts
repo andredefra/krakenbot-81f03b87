@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      backtest_runs: {
+        Row: {
+          created_at: string
+          id: string
+          input_hash: string
+          preset: string
+          result: Json
+          universe: string
+          user_id: string
+          years: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          input_hash: string
+          preset: string
+          result: Json
+          universe: string
+          user_id: string
+          years: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          input_hash?: string
+          preset?: string
+          result?: Json
+          universe?: string
+          user_id?: string
+          years?: number
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           created_at: string
@@ -37,6 +70,48 @@ export type Database = {
           message_id?: string
           parts?: Json
           role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      engine_diagnostics: {
+        Row: {
+          btc_last: number | null
+          btc_sma50: number | null
+          candidates: Json
+          cycle_at: string
+          fg_label: string | null
+          fg_value: number | null
+          notes: string | null
+          regime: string
+          regime_reason: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          btc_last?: number | null
+          btc_sma50?: number | null
+          candidates?: Json
+          cycle_at?: string
+          fg_label?: string | null
+          fg_value?: number | null
+          notes?: string | null
+          regime: string
+          regime_reason?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          btc_last?: number | null
+          btc_sma50?: number | null
+          candidates?: Json
+          cycle_at?: string
+          fg_label?: string | null
+          fg_value?: number | null
+          notes?: string | null
+          regime?: string
+          regime_reason?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -77,6 +152,27 @@ export type Database = {
         }
         Relationships: []
       }
+      fg_history: {
+        Row: {
+          classification: string | null
+          created_at: string
+          date: string
+          value: number
+        }
+        Insert: {
+          classification?: string | null
+          created_at?: string
+          date: string
+          value: number
+        }
+        Update: {
+          classification?: string | null
+          created_at?: string
+          date?: string
+          value?: number
+        }
+        Relationships: []
+      }
       fx_rates: {
         Row: {
           base: string
@@ -101,6 +197,45 @@ export type Database = {
           quote?: string
           rate?: number
           rate_date?: string
+        }
+        Relationships: []
+      }
+      historical_ohlc: {
+        Row: {
+          close: number
+          created_at: string
+          date: string
+          high: number
+          id: number
+          low: number
+          open: number
+          source: string
+          symbol: string
+          volume: number | null
+        }
+        Insert: {
+          close: number
+          created_at?: string
+          date: string
+          high: number
+          id?: number
+          low: number
+          open: number
+          source: string
+          symbol: string
+          volume?: number | null
+        }
+        Update: {
+          close?: number
+          created_at?: string
+          date?: string
+          high?: number
+          id?: number
+          low?: number
+          open?: number
+          source?: string
+          symbol?: string
+          volume?: number | null
         }
         Relationships: []
       }
@@ -303,6 +438,7 @@ export type Database = {
           created_at: string
           daily_loss_limit_pct: number
           enabled_sentiment_sources: Json
+          fg_greed_cap: number
           id: string
           is_running: boolean
           kill_switch_floor: number
@@ -312,8 +448,10 @@ export type Database = {
           min_target_pct: number
           mode: Database["public"]["Enums"]["trade_mode"]
           paper_fee_bps: number
+          regime_filter: string
           sentiment_weights: Json
           stop_loss_pct: number
+          strategy_preset: string
           take_profit_pct: number
           tax_country: string
           tax_reserve_cents: number
@@ -329,6 +467,7 @@ export type Database = {
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
+          fg_greed_cap?: number
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
@@ -338,8 +477,10 @@ export type Database = {
           min_target_pct?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
           paper_fee_bps?: number
+          regime_filter?: string
           sentiment_weights?: Json
           stop_loss_pct?: number
+          strategy_preset?: string
           take_profit_pct?: number
           tax_country?: string
           tax_reserve_cents?: number
@@ -355,6 +496,7 @@ export type Database = {
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
+          fg_greed_cap?: number
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
@@ -364,8 +506,10 @@ export type Database = {
           min_target_pct?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
           paper_fee_bps?: number
+          regime_filter?: string
           sentiment_weights?: Json
           stop_loss_pct?: number
+          strategy_preset?: string
           take_profit_pct?: number
           tax_country?: string
           tax_reserve_cents?: number
