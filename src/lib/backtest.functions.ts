@@ -13,6 +13,18 @@ const inputSchema = z.object({
   universe: z.enum(["core", "core_sleeve"]),
 });
 
+export type BacktestPayload = {
+  cached: boolean;
+  equity: Array<{ date: string; strategy: number; btc: number; spx: number }>;
+  strategyKpis: { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
+  btcKpis: BacktestPayload["strategyKpis"];
+  spxKpis: BacktestPayload["strategyKpis"];
+  tradesCount: number;
+  universe: string;
+  preset: string;
+  years: number;
+};
+
 // Universe = which crypto assets get traded (BTC always loaded for regime + benchmark)
 const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
