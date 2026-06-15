@@ -1,123 +1,66 @@
-## Obiettivo
+# Piano: Rischio ↔ Strategia + Recap descrittivo
 
-Aggiungere due nuovi pannelli all'app:
-1. **Diagnostica** — perché il bot non sta entrando ora (regime, filtri, candidati scartati)
-2. **Strategia** — preset di approccio (Conservativo / Bilanciato / Aggressivo / Custom) che riscrivono i parametri di rischio, + backtest 5 anni vs BTC e S&P 500
+## 1. Sync bidirezionale Rischio ↔ Strategia
 
----
+**Obiettivo**: se modifichi un parametro di rischio nella pagina **Impostazioni/Rischio**, il sistema rileva che non corrisponde più a nessun preset (Conservativo/Bilanciato/Aggressivo) e marca automaticamente `strategy_preset = 'custom'`. Viceversa, applicare un preset da `/strategia` aggiorna i campi di rischio (già funzionante).
 
-## 1. Pannello Diagnostica — `/diagnostica`
+### Cosa cambia
+- **`src/lib/strategy-presets.ts`**: aggiunta helper `detectPreset(settings)` che confronta i 10 valori chiave (max_positions, max_position_pct, stop_loss_pct, trailing_activate_pct, trailing_gap_pct, take_profit_pct, min_target_pct, daily_loss_limit_pct, fg_greed_cap, regime_filter) contro ogni preset. Match esatto → ritorna l'id; altrimenti → `'custom'`.
+- **`src/routes/_authenticated/settings.tsx`**: al salvataggio di un campo di rischio, dopo l'update della riga `settings`, ricalcola `strategy_preset` con `detectPreset()` e lo scrive nello stesso update. Mostra un badge in cima alla sezione Rischio: «Preset attivo: **Bilanciato**» o «Preset attivo: **Custom** ⚠️ valori modificati a mano» con link a `/strategia`.
+- **`src/routes/_authenticated/strategia.tsx`**: la card "Custom" appare solo se `strategy_preset === 'custom'` (oggi è sempre visibile). Mostra anche un diff vs il preset più vicino.
 
-Pagina read-only che mostra in tempo reale **perché** il trading-engine sta o non sta aprendo trade. Aggiornamento ogni 30s.
+### Edge case
+- Quando applichi un preset da Strategia → `strategy_preset` viene scritto esplicitamente, niente conflitto.
+- Quando un valore torna esattamente a un preset (es. rimetti tutti i valori = Bilanciato), il sistema rileva automaticamente e cambia `custom` → `balanced`.
 
-**Sezioni:**
-- **Regime di mercato** (badge grande verde/rosso): `risk-on` / `risk-off`
-  - BTC last vs SMA50 daily (con delta %)
-  - Fear & Greed value + label
-  - Motivo testuale: es. "BTC sotto SMA50 (−10.2%) → risk-off"
-- **Stato bot**: `is_running`, `mode`, posizioni aperte / max, capitale disponibile, daily P/L vs limite
-- **Ultimo ciclo engine**: timestamp, durata, esito (dall'`events_log`)
-- **Candidati valutati nell'ultimo ciclo**: tabella per ogni asset del Core+Sleeve con
-  - prezzo, SMA20, SMA50, RSI, volume
-  - check ✅/❌ su ogni filtro (trend, breakout, RSI, liquidità, sentiment)
-  - **motivo scarto** se non aperto
-- **Prossimo controllo** countdown (ogni 5 min)
+## 2. Recap descrittivo per preset
 
-**Implementazione:**
-- Nuova server fn `getDiagnostics()` in `src/lib/diagnostics.functions.ts` che:
-  - Legge `settings`, ultime righe `events_log`, ultimo `sentiment_snapshot`
-  - Chiama `fetchKrakenTickers` + `fetchKrakenDailyCloses('BTC')` per regime live
-  - Per ogni asset Core+Sleeve calcola filtri (riusa funzioni da `trading-engine/index.ts` — estratte in `_shared/strategy.ts`)
-- Modifica `trading-engine/index.ts` per loggare in `events_log` un evento `engine.candidate` per ogni asset valutato con i filtri (così la diagnostica non rifa il lavoro, basta leggere l'ultimo ciclo)
+**Obiettivo**: ogni card preset in `/strategia` mostra un testo chiaro su *cosa fa*, *che crypto tradera*, *quando entra/esce*, *profilo utente ideale*.
 
----
+### Cosa cambia
+- **`src/lib/strategy-presets.ts`**: aggiungo a ogni preset un campo `description` strutturato:
+  ```ts
+  description: {
+    summary: string;           // 1-2 frasi
+    assets: string[];          // ["BTC", "ETH", "SOL", "+ sleeve momentum top-20 mcap"]
+    entryRules: string[];      // ["Solo se BTC > SMA50", "Fear & Greed ≤ 70", ...]
+    exitRules: string[];       // ["SL fisso -7%", "Trailing dopo +8%", ...]
+    idealFor: string;          // "Chi vuole esposizione crypto senza notti insonni"
+    avoidIf: string;           // "Cerchi rendimenti >50%/anno"
+    expectedDrawdown: string;  // "-10% / -15%"
+    tradesPerMonth: string;    // "2-5"
+  }
+  ```
+- **`src/routes/_authenticated/strategia.tsx`**: sotto ogni card preset, sezione espandibile "Cosa prevede questa strategia" che mostra il recap formattato (icone, liste, badge per asset).
 
-## 2. Pannello Strategia — `/strategia`
+### Contenuto preset (bozza)
 
-Pagina con **3 preset + custom** che riscrivono i parametri di `settings` (gli stessi mostrati in `/settings`).
+**Conservativo**
+- Asset: solo BTC, ETH (core liquidi)
+- Entry: BTC sopra SMA50 + F&G ≤ 70 + segnale momentum 4h
+- Exit: SL -7%, trailing da +8% gap 5%, TP parziale +15%
+- Per chi: vuole esposizione crypto minima, dorme sereno
+- Trades/mese: 1-3, drawdown atteso -8%/-12%
 
-**Preset proposti** (allineati a STRATEGIA.md):
+**Bilanciato** (default)
+- Asset: BTC, ETH, SOL + sleeve momentum (top-10 mcap)
+- Entry: BTC sopra SMA50 + F&G ≤ 75 + segnale 1h
+- Exit: SL -10%, trailing da +10% gap 7%, TP +20%
+- Per chi: vuole crescita reale ma con regole, accetta -15% drawdown
+- Trades/mese: 3-8, drawdown atteso -12%/-18%
 
-| Preset | Max pos | Size max | Stop loss | Trailing att./gap | Take profit | Min target | Daily loss | F&G greed cap | Filtro SMA50 BTC |
-|---|---|---|---|---|---|---|---|---|---|
-| **Conservativo** | 2 | 20% | −7% | +8% / −5% | +15% | +3% | −5% | 70 | obbligatorio |
-| **Bilanciato** (default) | 3 | 30% | −10% | +10% / −7% | +20% | +2% | −8% | 75 | obbligatorio |
-| **Aggressivo** | 4 | 40% | −12% | +12% / −8% | +25% | +1.5% | −10% | 85 | solo se BTC > SMA200 |
-| **Custom** | — | — | — | — | — | — | — | — | — |
+**Aggressivo**
+- Asset: BTC, ETH, SOL + sleeve momentum esteso (top-20)
+- Entry: BTC sopra SMA200 (filtro più permissivo) + F&G ≤ 85
+- Exit: SL -12%, trailing da +12% gap 8%, TP +25%
+- Per chi: cerca rendimenti alti, tollera -25% drawdown
+- Trades/mese: 5-15, drawdown atteso -20%/-30%
 
-**UI:**
-- 3 card grandi con preset, badge "Attuale", rendimento atteso/varianza ("alta/media/bassa"), CTA "Applica preset"
-- Sotto: **comparatore live** che mostra cosa cambierebbe rispetto ai valori attuali (diff tabellare prima/dopo) con conferma esplicita
-- Dopo applica → toast + redirect a `/settings` o stay con i nuovi valori
-- Sezione "Avanzato" collassata: toggle per
-  - filtro regime BTC (obbligatorio / solo F&G / disattivato)
-  - peso sentiment social (off / conferma / blocco)
-  - timeframe (1h / 4h)
+## File modificati
+- `src/lib/strategy-presets.ts` — +description, +detectPreset helper
+- `src/routes/_authenticated/settings.tsx` — badge preset attivo + auto-detect su save
+- `src/routes/_authenticated/strategia.tsx` — sezione recap espandibile + card Custom condizionale
 
-**Implementazione:**
-- Nuova `src/lib/strategy-presets.ts` (client-safe) con i 4 preset come oggetti tipizzati
-- Server fn `applyStrategyPreset({ preset })` in `src/lib/strategy.functions.ts` con `requireSupabaseAuth` → `UPDATE settings SET ...`
-- Migration: aggiungere 3 colonne a `settings`:
-  - `strategy_preset TEXT DEFAULT 'balanced'`
-  - `regime_filter TEXT DEFAULT 'btc_sma50'` (`'btc_sma50'|'fg_only'|'off'`)
-  - `fg_greed_cap INT DEFAULT 75`
-- `trading-engine/index.ts` legge `regime_filter` e `fg_greed_cap` invece di hardcode
-
----
-
-## 3. Backtest 5 anni nel pannello Strategia
-
-Sezione dedicata sotto i preset: **"Come avrebbe performato negli ultimi 5 anni"**.
-
-**Cosa mostra:**
-- Grafico equity curve (line chart con `recharts`) di 3 serie sovrapposte:
-  - **Strategia selezionata** (paper, applicando i filtri del preset)
-  - **Benchmark BTC buy & hold**
-  - **Benchmark S&P 500 buy & hold** (proxy SPY)
-- KPI sotto il grafico (tabella):
-  - Rendimento totale, CAGR, max drawdown, Sharpe (semplificato), # trade, win rate, profit factor
-- Periodo selezionabile: 1y / 3y / 5y
-- Asset universe selezionabile (Core / Core+Sleeve)
-
-**Implementazione tecnica:**
-- **Dati storici**:
-  - Crypto: Kraken OHLC daily (`fetchKrakenDailyCloses` esiste già, va estesa per restituire OHLCV completo + supportare lookback >720gg via paginazione `since`)
-  - S&P 500: dati daily da fonte gratuita — proposta **Stooq** (`https://stooq.com/q/d/l/?s=^spx&i=d`, CSV, no API key, 5y disponibili). Alternativa: Yahoo Finance (instabile) o FRED.
-- **Cache**: nuova tabella `historical_ohlc` (symbol, date, open, high, low, close, volume) popolata on-demand e rinfrescata 1×/giorno via cron. Evita di sbattere Kraken/Stooq a ogni cambio preset.
-- **Engine di backtest**: nuova `src/lib/backtest.server.ts` (puro JS, deterministico):
-  - Replica la logica di `trading-engine` (SMA20/50, RSI, breakout, regime BTC+F&G) su candele storiche
-  - F&G storico: Alternative.me ha endpoint `?limit=0` che restituisce **tutta la storia dal 2018** → cache in tabella `fg_history`
-  - Applica fee Kraken (0.4% per side), slippage 0.1%, sizing del preset
-  - Output: array `{date, equity_strategy, equity_btc, equity_spx, trades, drawdown}`
-- **Server fn** `runBacktest({ preset, years, universe })` con `requireSupabaseAuth`
-  - Tempi attesi: ~2-5s per 5y, accettabile per UI con skeleton + cancellazione
-- **Caching risultati**: tabella `backtest_runs` (input_hash, result_jsonb, created_at) per non rifare lo stesso backtest
-
----
-
-## File coinvolti
-
-**Nuovi:**
-- `src/routes/_authenticated/diagnostica.tsx`
-- `src/routes/_authenticated/strategia.tsx`
-- `src/lib/diagnostics.functions.ts`
-- `src/lib/strategy.functions.ts`
-- `src/lib/strategy-presets.ts`
-- `src/lib/backtest.functions.ts` (server fn wrapper)
-- `src/lib/backtest.server.ts` (engine puro)
-- `supabase/functions/_shared/strategy.ts` (filtri estratti da trading-engine)
-- `supabase/functions/historical-sync/index.ts` (cron daily OHLC + F&G)
-- 1 migration: nuove colonne `settings` + tabelle `historical_ohlc`, `fg_history`, `backtest_runs` (con GRANT + RLS)
-
-**Modificati:**
-- `supabase/functions/trading-engine/index.ts` — log `engine.candidate` + leggi nuove colonne settings
-- `src/routes/__root.tsx` o sidebar nav — aggiungere voci "Diagnostica" e "Strategia"
-
----
-
-## Domande prima di partire
-
-1. **S&P 500 benchmark — fonte dati**: confermi **Stooq** (gratis, no API key, affidabile)? Alternativa: ti procuri una API key Alpha Vantage / Polygon.
-2. **Backtest universe**: devo includere anche le altcoin Sleeve (servono Liste Kraken USD), o solo Core (ETH, SOL) + BTC?
-3. **Cambio preset → trade aperti esistenti**: se cambio da Aggressivo a Conservativo mentre ho 4 posizioni aperte, devo (a) lasciarle correre con le regole vecchie, (b) chiuderne forzatamente l'eccesso, (c) applicare i nuovi stop ai trade esistenti?
-4. **Diagnostica refresh**: ogni 30s va bene o preferisci un bottone "refresh manuale" (meno rate-limit Kraken)?
+## Fuori scope (risponde alle altre domande)
+- **GitHub**: collegamento manuale tuo via menu **+ → GitHub → Connect project**
+- **Supabase**: nulla da fare, tutto già configurato (tabelle, RLS, cron, secrets)

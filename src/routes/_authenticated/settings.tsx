@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,8 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { AlertTriangle, Sparkles } from "lucide-react";
+import { detectPreset, getPreset } from "@/lib/strategy-presets";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -58,16 +61,29 @@ function SettingsPage() {
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
+      // Detect preset: include unchanged fields (fg_greed_cap, regime_filter) from current row
+      const merged = { ...(q.data as Record<string, unknown>), ...patch };
+      const newPreset = detectPreset(merged);
+      patch.strategy_preset = newPreset;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await supabase.from("settings").update(patch as any).eq("id", q.data.id);
       if (error) throw error;
+      return newPreset;
     },
-    onSuccess: () => {
-      toast.success("Impostazioni salvate");
+    onSuccess: (newPreset) => {
+      const presetName = getPreset(newPreset).name;
+      toast.success(
+        newPreset === "custom"
+          ? "Impostazioni salvate — preset impostato su Custom"
+          : `Impostazioni salvate — preset: ${presetName}`,
+      );
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore salvataggio"),
   });
+
+  const currentPresetId = q.data ? detectPreset(q.data as Record<string, unknown>) : "balanced";
+  const currentPreset = getPreset(currentPresetId);
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -76,10 +92,42 @@ function SettingsPage() {
         <p className="text-sm text-muted-foreground">Parametri della strategia (modificabili in qualsiasi momento)</p>
       </div>
 
+      {q.data && (
+        <Card className={currentPresetId === "custom" ? "border-amber-500/50" : "border-primary/40"}>
+          <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              {currentPresetId === "custom" ? (
+                <AlertTriangle className="size-5 text-amber-500 shrink-0" />
+              ) : (
+                <Sparkles className="size-5 text-primary shrink-0" />
+              )}
+              <div>
+                <div className="font-medium text-sm">
+                  Preset attivo: <span className="text-primary">{currentPreset.name}</span>
+                  {currentPresetId === "custom" && (
+                    <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">Custom</Badge>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {currentPresetId === "custom"
+                    ? "Valori modificati a mano — non corrispondono a nessun preset"
+                    : currentPreset.tagline}
+                </div>
+              </div>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/strategia">Vai a Strategia →</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Parametri</CardTitle>
-          <CardDescription>I valori partono dai default di STRATEGIA §3.</CardDescription>
+          <CardDescription>
+            Modificando un valore qui, se non corrisponde più a un preset, il sistema lo marcherà come <strong>Custom</strong>.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {q.isLoading ? (
