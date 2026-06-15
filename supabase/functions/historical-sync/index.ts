@@ -135,25 +135,53 @@ async function upsertOhlc(supa: ReturnType<typeof createClient>, symbol: string,
 }
 
 async function fetchSpxCombo(): Promise<Array<{ date: string; close: number; source: string }>> {
-  // 1) Stooq
-  try {
-    const r = await fetch("https://stooq.com/q/d/l/?s=^spx&i=d");
-    if (r.ok) {
-      const txt = await r.text();
-      const lines = txt.trim().split("\n").slice(1); // skip header Date,Open,High,Low,Close,Volume
-      const out: Array<{ date: string; close: number; source: string }> = [];
-      for (const ln of lines) {
-        const cols = ln.split(",");
-        if (cols.length < 5) continue;
-        const close = parseFloat(cols[4]);
-        if (!isFinite(close)) continue;
-        out.push({ date: cols[0], close, source: "stooq" });
-      }
-      if (out.length > 100) return out;
-    }
-  } catch (_e) { /* fall through */ }
+  const UA = { "User-Agent": "Mozilla/5.0 (compatible; KrakenBot/1.0)" };
 
-  // 2) Alpha Vantage
+  // 1) Yahoo chart JSON (endpoint v8, ancora attivo)
+  for (const sym of ["%5EGSPC", "SPY"]) {
+    try {
+      const r = await fetch(
+        `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=5y&interval=1d`,
+        { headers: UA },
+      );
+      if (r.ok) {
+        const j = await r.json();
+        const result = j?.chart?.result?.[0];
+        const ts: number[] = result?.timestamp ?? [];
+        const closes: (number | null)[] = result?.indicators?.quote?.[0]?.close ?? [];
+        const out: Array<{ date: string; close: number; source: string }> = [];
+        for (let i = 0; i < ts.length; i++) {
+          const c = closes[i];
+          if (c == null || !isFinite(c)) continue;
+          const d = new Date(ts[i] * 1000).toISOString().slice(0, 10);
+          out.push({ date: d, close: c, source: `yahoo:${sym}` });
+        }
+        if (out.length > 100) return out;
+      }
+    } catch (_e) { /* fall through */ }
+  }
+
+  // 2) Stooq (con UA, prova sia ^spx che spy.us)
+  for (const sym of ["%5Espx", "spy.us"]) {
+    try {
+      const r = await fetch(`https://stooq.com/q/d/l/?s=${sym}&i=d`, { headers: UA });
+      if (r.ok) {
+        const txt = await r.text();
+        const lines = txt.trim().split("\n").slice(1);
+        const out: Array<{ date: string; close: number; source: string }> = [];
+        for (const ln of lines) {
+          const cols = ln.split(",");
+          if (cols.length < 5) continue;
+          const close = parseFloat(cols[4]);
+          if (!isFinite(close)) continue;
+          out.push({ date: cols[0], close, source: `stooq:${sym}` });
+        }
+        if (out.length > 100) return out;
+      }
+    } catch (_e) { /* fall through */ }
+  }
+
+  // 3) Alpha Vantage SPY ETF
   if (ALPHA_VANTAGE_KEY) {
     try {
       const r = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=SPY&outputsize=full&apikey=${ALPHA_VANTAGE_KEY}`);
@@ -172,27 +200,9 @@ async function fetchSpxCombo(): Promise<Array<{ date: string; close: number; sou
     } catch (_e) { /* fall through */ }
   }
 
-  // 3) Yahoo CSV
-  try {
-    const period2 = Math.floor(Date.now() / 1000);
-    const period1 = period2 - 6 * 365 * 86400;
-    const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/download/%5EGSPC?period1=${period1}&period2=${period2}&interval=1d&events=history`);
-    if (r.ok) {
-      const txt = await r.text();
-      const lines = txt.trim().split("\n").slice(1);
-      const out: Array<{ date: string; close: number; source: string }> = [];
-      for (const ln of lines) {
-        const cols = ln.split(",");
-        if (cols.length < 5) continue;
-        const c = parseFloat(cols[4]);
-        if (isFinite(c)) out.push({ date: cols[0], close: c, source: "yahoo" });
-      }
-      if (out.length) return out;
-    }
-  } catch (_e) { /* fall through */ }
-
   throw new Error("Tutte le fonti S&P 500 hanno fallito");
 }
+
 
 async function fetchFgHistory(): Promise<Array<{ date: string; value: number; classification: string }>> {
   const r = await fetch("https://api.alternative.me/fng/?limit=0");
