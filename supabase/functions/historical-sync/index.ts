@@ -177,6 +177,9 @@ async function fetchCoinGeckoDailyHistory(coinId: string, years: number): Promis
   return [...byDate.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, close]) => ({ date, open: close, high: close, low: close, close, volume: 0 }));
+}
+
+
 
 async function upsertOhlc(supa: ReturnType<typeof createClient>, symbol: string, source: string, rows: OhlcRow[]) {
   const payload = rows.map((r) => ({ symbol, source, ...r }));
