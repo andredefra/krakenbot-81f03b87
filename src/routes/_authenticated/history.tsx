@@ -7,25 +7,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatUsd, formatPct, formatDateTime, formatDuration, pnlClass } from "@/lib/format";
+import { useActiveMode } from "@/hooks/use-active-mode";
 
 export const Route = createFileRoute("/_authenticated/history")({
   component: HistoryPage,
 });
 
 function HistoryPage() {
+  const { mode } = useActiveMode();
   const q = useQuery({
-    queryKey: ["positions", "closed"],
+    queryKey: ["positions", "closed", mode],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("positions")
         .select("*")
         .eq("status", "closed")
+        .eq("mode", mode)
         .order("closed_at", { ascending: false })
         .limit(200);
       if (error) throw error;
       return data ?? [];
     },
   });
+
 
   useEffect(() => {
     const channel = supabase

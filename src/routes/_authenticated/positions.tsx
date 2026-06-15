@@ -7,24 +7,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatUsd, formatPct, formatNumber, pnlClass } from "@/lib/format";
+import { useActiveMode } from "@/hooks/use-active-mode";
 
 export const Route = createFileRoute("/_authenticated/positions")({
   component: PositionsPage,
 });
 
 function PositionsPage() {
+  const { mode } = useActiveMode();
   const q = useQuery({
-    queryKey: ["positions", "open"],
+    queryKey: ["positions", "open", mode],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("positions")
         .select("*")
         .eq("status", "open")
+        .eq("mode", mode)
         .order("opened_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
   });
+
 
   useEffect(() => {
     const channel = supabase
