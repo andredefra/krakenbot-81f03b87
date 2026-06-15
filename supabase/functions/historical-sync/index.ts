@@ -155,27 +155,39 @@ async function fetchKrakenDailyHistory(pair: string, years: number): Promise<Ohl
   return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// CryptoCompare free public API — fino a 2000 candele daily per call, OHLC completo, no API key.
-// Docs: https://min-api.cryptocompare.com/documentation?key=Historical&cat=dataHistoday
-async function fetchCryptoCompareDailyHistory(fsym: string, years: number): Promise<OhlcRow[]> {
-  const limit = Math.min(2000, Math.ceil(years * 365.25));
-  const url = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${fsym}&tsym=USD&limit=${limit}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`CryptoCompare HTTP ${r.status}`);
-  const j = await r.json();
-  if (j?.Response === "Error") throw new Error(`CryptoCompare: ${j.Message}`);
-  const data = (j?.Data?.Data ?? []) as Array<{ time: number; open: number; high: number; low: number; close: number; volumeto: number }>;
-  if (!data.length) return [];
-  return data
-    .filter((d) => isFinite(d.close) && d.close > 0)
-    .map((d) => ({
-      date: new Date(d.time * 1000).toISOString().slice(0, 10),
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      volume: d.volumeto ?? 0,
-    }));
+// Binance public klines — fino a 1000 candele per call, OHLC completo, no API key.
+// Paginazione backward via `endTime`. Docs: https://binance-docs.github.io/apidocs/spot/en/#kline-candlestick-data
+async function fetchBinanceDailyHistory(pair: string, years: number): Promise<OhlcRow[]> {
+  const totalDays = Math.ceil(years * 365.25);
+  const dayMs = 86400_000;
+  let endTime = Date.now();
+  const all: OhlcRow[] = [];
+  for (let attempt = 0; attempt < 5 && all.length < totalDays; attempt++) {
+    const url = `https://data-api.binance.vision/api/v3/klines?symbol=${pair}&interval=1d&limit=1000&endTime=${endTime}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Binance HTTP ${r.status}`);
+    const j = await r.json() as Array<[number, string, string, string, string, string, number, string, number, string, string, string]>;
+    if (!Array.isArray(j) || j.length === 0) break;
+    for (const k of j) {
+      const close = parseFloat(k[4]);
+      if (!isFinite(close)) continue;
+      all.push({
+        date: new Date(k[0]).toISOString().slice(0, 10),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close,
+        volume: parseFloat(k[5]),
+      });
+    }
+    // prossima pagina: endTime = primo openTime - 1 giorno
+    endTime = j[0][0] - dayMs;
+    if (j.length < 1000) break;
+  }
+  // dedupe e sort
+  const m = new Map<string, OhlcRow>();
+  for (const r of all) m.set(r.date, r);
+  return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 
