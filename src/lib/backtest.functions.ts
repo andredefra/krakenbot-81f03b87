@@ -16,10 +16,11 @@ const inputSchema = z.object({
 
 export type BacktestPayload = {
   cached: boolean;
-  equity: Array<{ date: string; strategy: number; btc: number; spx: number }>;
+  equity: Array<{ date: string; strategy: number; btc: number; spx: number; btcRegime: number }>;
   strategyKpis: { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
   btcKpis: BacktestPayload["strategyKpis"];
   spxKpis: BacktestPayload["strategyKpis"];
+  btcRegimeKpis: BacktestPayload["strategyKpis"];
   tradesCount: number;
   universe: string;
   preset: string;
@@ -31,8 +32,10 @@ const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
 function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+  // v2 = BTC-core + momentum rotation engine. Bump invalidates legacy runs.
+  return `v2|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
 }
+
 
 export const runBacktestFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -102,8 +105,10 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       .range(0, 9999);
     const fg = (fgRows.data ?? []).map((r) => ({ date: r.date as string, value: r.value }));
 
-    const assets: Record<string, Array<{ date: string; close: number }>> = {};
+    // Assets dict for rotation engine: BTC anchor + tradeable alts
+    const assets: Record<string, Array<{ date: string; close: number }>> = { BTC: bySym["BTC"] };
     for (const sym of tradedSyms) {
+      if (sym === "BTC") continue;
       if (bySym[sym] && bySym[sym].length > 50) assets[sym] = bySym[sym];
     }
 
@@ -120,6 +125,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         daily_loss_limit_pct: presetMeta.values.daily_loss_limit_pct,
         fg_greed_cap: presetMeta.values.fg_greed_cap,
         regime_filter: presetMeta.values.regime_filter,
+        rebalance_days: presetMeta.values.rebalance_days ?? 7,
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
@@ -139,11 +145,13 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       strategyKpis: result.strategyKpis,
       btcKpis: result.btcKpis,
       spxKpis: result.spxKpis,
+      btcRegimeKpis: result.btcRegimeKpis,
       tradesCount: result.tradeLog.length,
       universe: data.universe,
       preset: data.preset,
       years: data.years,
     };
+
 
     await supabase
       .from("backtest_runs")
