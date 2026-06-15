@@ -378,12 +378,29 @@ function BacktestSection() {
               </ResponsiveContainer>
             </div>
 
+            {(() => {
+              const final = (pct: number) => startCapital * (1 + pct / 100);
+              const eur = (v: number) => v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+              const cls = (v: number) => v >= startCapital ? "text-[color:var(--profit)]" : "text-[color:var(--loss)]";
+              const sV = final(runMut.data.strategyKpis.totalReturnPct);
+              const bV = final(runMut.data.btcKpis.totalReturnPct);
+              const pV = final(runMut.data.spxKpis.totalReturnPct);
+              return (
+                <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
+                  <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
+                  <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
+                  <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
+                  <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-3 gap-3">
               <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
+
 
             {runMut.data.cached && (
               <p className="text-xs text-muted-foreground">📦 Risultato dalla cache (valido 24h)</p>
