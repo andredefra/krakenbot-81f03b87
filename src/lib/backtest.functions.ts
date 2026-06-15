@@ -99,7 +99,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
 
     const { runBacktest } = await import("./backtest.server");
     const result = runBacktest({
-      startCapital: 1000,
+      startCapital: data.startCapital,
       preset: {
         max_positions: presetMeta.values.max_positions,
         max_position_pct: presetMeta.values.max_position_pct,
