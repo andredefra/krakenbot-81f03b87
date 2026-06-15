@@ -58,19 +58,11 @@ function DashboardPage() {
     },
   });
 
-  const regimeQuery = useQuery({
-    queryKey: ["sentiment", "regime", "latest"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sentiment_snapshots")
-        .select("ts,score,raw")
-        .eq("source", "regime")
-        .order("ts", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
+  const fetchDiag = useServerFn(getDiagnostics);
+  const diagQuery = useQuery({
+    queryKey: ["diagnostics", "dashboard"],
+    queryFn: () => fetchDiag(),
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
