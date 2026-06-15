@@ -16,6 +16,7 @@ import {
   ScrollText,
   Bot,
   MessageCircle,
+  Calculator,
   LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/positions", label: "Posizioni aperte", icon: LineChart },
   { to: "/history", label: "Storico trade", icon: History },
+  { to: "/bilancio", label: "Bilancio", icon: Calculator },
   { to: "/settings", label: "Rischio", icon: SettingsIcon },
   { to: "/sentiment", label: "Sentiment", icon: Activity },
   { to: "/mode", label: "Modalità", icon: Power },
