@@ -368,7 +368,7 @@ export const syncKrakenFees = createServerFn({ method: "POST" })
         volume: t.volume,
         cost: t.cost,
         traded_at: t.tradedAt,
-        raw: t.raw,
+        raw: t.raw as never,
       }));
 
       const { error, count } = await context.supabase
