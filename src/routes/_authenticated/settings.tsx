@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertTriangle, Sparkles } from "lucide-react";
-import { detectPreset, getPreset } from "@/lib/strategy-presets";
+import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
+import { detectPreset, getPreset, type PresetId } from "@/lib/strategy-presets";
+import { applyStrategyPreset } from "@/lib/strategy.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -124,6 +126,23 @@ function SettingsPage() {
 
   const currentPresetId = q.data ? detectPreset(q.data as Record<string, unknown>) : "balanced";
   const currentPreset = getPreset(currentPresetId);
+  const storedPresetId = (q.data?.strategy_preset ?? null) as PresetId | null;
+  const storedPreset = storedPresetId && storedPresetId !== "custom" ? getPreset(storedPresetId) : null;
+  // Disallineato = il preset salvato in `strategy_preset` non corrisponde più ai valori effettivi
+  const isMisaligned = !!storedPreset && currentPresetId === "custom";
+
+  const applyPresetFn = useServerFn(applyStrategyPreset);
+  const realign = useMutation({
+    mutationFn: async () => {
+      if (!storedPresetId || storedPresetId === "custom") throw new Error("Nessun preset da riallineare");
+      await applyPresetFn({ data: { preset: storedPresetId } });
+    },
+    onSuccess: () => {
+      toast.success(`Valori riallineati al preset ${storedPreset?.name ?? ""}`);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Errore riallineamento"),
+  });
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -133,29 +152,55 @@ function SettingsPage() {
       </div>
 
       {q.data && (
-        <Card className={currentPresetId === "custom" ? "border-amber-500/50" : "border-primary/40"}>
+        <Card className={isMisaligned ? "border-amber-500/60" : currentPresetId === "custom" ? "border-amber-500/50" : "border-primary/40"}>
           <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
-              {currentPresetId === "custom"
+              {isMisaligned || currentPresetId === "custom"
                 ? <AlertTriangle className="size-5 text-amber-500 shrink-0" />
                 : <Sparkles className="size-5 text-primary shrink-0" />}
               <div>
-                <div className="font-medium text-sm">
-                  Preset attivo: <span className="text-primary">{currentPreset.name}</span>
-                  {currentPresetId === "custom" && (
-                    <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">Custom</Badge>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {currentPresetId === "custom"
-                    ? "Valori modificati a mano — non corrispondono a nessun preset"
-                    : currentPreset.tagline}
-                </div>
+                {isMisaligned ? (
+                  <>
+                    <div className="font-medium text-sm">
+                      Preset disallineato: dichiarato <span className="text-primary">{storedPreset!.name}</span>
+                      <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">valori modificati</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      I valori salvati non corrispondono più al preset {storedPreset!.name}. Riallineali per tornare al default v2.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-medium text-sm">
+                      Preset attivo: <span className="text-primary">{currentPreset.name}</span>
+                      {currentPresetId === "custom" && (
+                        <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">Custom</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {currentPresetId === "custom"
+                        ? "Valori modificati a mano — non corrispondono a nessun preset"
+                        : currentPreset.tagline}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/strategia">Vai a Strategia →</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              {isMisaligned && (
+                <Button
+                  size="sm"
+                  onClick={() => realign.mutate()}
+                  disabled={realign.isPending}
+                >
+                  <RefreshCw className={`size-4 mr-1 ${realign.isPending ? "animate-spin" : ""}`} />
+                  Riallinea al preset
+                </Button>
+              )}
+              <Button asChild variant="outline" size="sm">
+                <Link to="/strategia">Vai a Strategia →</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

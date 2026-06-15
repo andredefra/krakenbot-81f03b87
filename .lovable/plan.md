@@ -1,88 +1,72 @@
 
-# Migrazione a v2 — Core-Satellite + Universo Dinamico
+## Cosa non va (diagnosi)
 
-Sostituisco `STRATEGIA.md` + `BUILD_SPEC.md` con le v2 e allineo codice + DB + UI. Procediamo in 3 fasi per non rompere nulla in un colpo solo.
+### 1. "Preset attivo: Custom" anche se Strategia mostra Bilanciato
+Nel DB `settings` per il tuo utente:
+- `strategy_preset = "balanced"` ✅
+- ma `take_profit_pct = 20` mentre il preset v2 Bilanciato richiede `25`.
 
----
+`detectPreset()` confronta tutti i campi numerici uno-a-uno: basta un mismatch e ricade su "custom". La causa è che la migrazione v2 ha aggiunto le nuove colonne ma **non ha riapplicato i valori del preset all'utente esistente** — `take_profit_pct` è rimasto al vecchio default (20). La pagina Strategia mostra "Già attivo" perché legge solo la colonna `strategy_preset`, mentre la pagina Rischio confronta i valori reali → conflitto visibile.
 
-## Fase 1 — Fondamenta (docs, DB, presets, sentiment, UI Strategia/Rischio/Sentiment)
+### 2. "Hai chiesto 3 anni ma in DB c'è solo storico più breve" (e 5 anni dà lo stesso range)
+Nel DB i dati crypto vanno dal **2020-12-24 al 2026-06-15** (~5,5 anni). Ma i risultati cache mostrano:
+- 5 anni → `2021-06-15 → 2024-03-10` (≈ 2,74y)
+- 3 anni → `2023-06-15 → 2026-03-10` (≈ 2,74y)
 
-Tutto ciò che si vede subito e che serve per le fasi successive.
+Sempre **circa 1000 candele**. Causa: PostgREST applica un `max-rows` interno (1000) che `.range(0, 9999)` **non** sovrascrive. La query BTC (master timeline del backtest) viene troncata a 1000 righe → il backtest gira solo sui primi ~2,74 anni della finestra richiesta. Chiedere "5 anni" o "3 anni" risulta nello stesso span.
 
-### 1.1 Documenti di verità
-- Sovrascrivo `src/lib/assistant/STRATEGIA.md` con `STRATEGIA_v2.md`.
-- Sovrascrivo `src/lib/assistant/BUILD_SPEC.md` con `BUILD_SPEC_v2.md`.
-- L'assistente userà automaticamente le v2 (già caricate via `?raw`).
-
-### 1.2 Schema DB (migration)
-Aggiungo a `public.settings` i nuovi campi v2 (con default ragionevoli):
-`core_satellite_split jsonb {core:0.6,satellite:0.4}`, `core_weights jsonb {BTC:0.6,ETH:0.4}`,
-`min_volume_24h numeric=5_000_000`, `max_spread_pct numeric=0.3`, `min_listing_age_days int=60`,
-`macro_ma_period int=200`, `mid_ma_period int=50`, `rebalance_frequency text='monthly'`,
-`risk_per_trade_pct numeric=3`, `stop_atr_mult numeric=2`, `stop_min_pct numeric=12`,
-`monthly_trade_cap int=8`, `cooldown_hours int=48`, `max_satellite_positions int=2`.
-Creo `public.universe` (asset, base, quote, volume_24h, spread_pct, first_seen, eligible, excluded_reason, last_checked) con RLS + GRANT come da convenzioni del progetto.
-Aggiungo colonna `sleeve text check in ('core','satellite')` a `positions` (default `satellite`).
-Aggiungo `core_value` e `satellite_value` a `portfolio_snapshots`.
-
-### 1.3 Presets riscritti (Core-Satellite v2)
-Riscrivo `src/lib/strategy-presets.ts`. I tre preset cambiano significato:
-
-| Preset | Split Core/Sat | Risk/trade | Stop | Trailing | Min target | Trade/mese | Cooldown |
-|---|---|---|---|---|---|---|---|
-| Conservativo | 75 / 25 | 2% | max(12%, 2×ATR) | +15/-10 | +5% | 4 | 72h |
-| Bilanciato (default v2) | 60 / 40 | 3% | max(12%, 2×ATR) | +12/-8 | +4% | 8 | 48h |
-| Aggressivo | 45 / 55 | 4% | max(10%, 1.8×ATR) | +12/-8 | +3% | 12 | 24h |
-
-Timeframe sempre `4h/daily`. Aggiorno `detectPreset` per i nuovi campi.
-
-### 1.4 Sentiment pesato dalla strategia
-Tolgo l'edit manuale dei pesi: in `Sentiment` resta solo ON/OFF + preview del peso. I pesi sono derivati dal preset attivo (funzione pura `deriveSentimentWeights(preset, enabledSources)` in `src/lib/strategy-presets.ts`):
-- Conservativo: F&G 0.7, LunarCrush 0.2, Santiment 0.1 (sentiment "gate" forte).
-- Bilanciato: F&G 0.5, LunarCrush 0.3, Santiment 0.2.
-- Aggressivo: F&G 0.3, LunarCrush 0.4, Santiment 0.3 (più peso al social per cogliere momentum).
-Vengono riscalati sulle sole sorgenti attive. Al cambio preset o toggle, `settings.sentiment_weights` si aggiorna server-side.
-
-### 1.5 UI
-- **Strategia**: cards riallineate al nuovo significato (Core-Satellite, universo dinamico, target minimo +4%, max 2 pos satellite, tetto mensile, cooldown). Sezione "Cosa è incluso" aggiornata.
-- **Impostazioni rischio**: nuovi campi (split, pesi core, filtri universo, risk_per_trade, stop_atr_mult, monthly_trade_cap, cooldown_hours). Detect preset → Custom se modifico.
-- **Sentiment**: solo toggle; mostra peso derivato in sola lettura con tooltip "deriva dal preset".
-
-### 1.6 Backtest
-Aggiorno `backtest.functions.ts` + `backtest.server.ts` per simulare Core-Satellite v2:
-- 60/40 (o split del preset) BTC/ETH core con regime macro BTC vs SMA200 (uscita/rientro);
-- satellite max 2 posizioni con stop ATR, cooldown, tetto mensile, target +4%;
-- aggiungo benchmark **DCA BTC/ETH 60/40** (richiesto da §12 v2).
-Invalido cache con prefisso `v3|...`.
+### 3. Linea della Strategia invisibile nel grafico
+La linea Strategia usa `stroke="hsl(var(--primary))"` che nel tema è **verde** (lo stesso `#22c55e` usato per S&P 500). Le due linee si sovrappongono visivamente; la curva Strategia (+7%) sparisce sotto/dentro la curva S&P 500.
 
 ---
 
-## Fase 2 — Universe-scanner + pagina Universo
+## Piano di intervento
 
-- Nuova edge function `supabase/functions/universe-scanner` (cron ~2h via pg_cron + pg_net): elenco coppie Kraken pubbliche → volume24h + spread → upsert in `universe` con `eligible` e `excluded_reason`. `first_seen` auto-popolato.
-- Nuova route `src/routes/_authenticated/universe.tsx`: tabella con asset, volume, spread%, età, esito filtri; filtri client per "eligibili".
-- Voce nel menu laterale.
+### A. Backtest — paginazione query OHLC (`src/lib/backtest.functions.ts`)
+Sostituire la singola chiamata `.range(0, 9999)` con un loop che pagina finché la risposta restituisce `pageSize` righe (PostgREST cap = 1000):
 
-## Fase 3 — Split del motore: satellite-engine + core-engine
+```text
+const PAGE = 1000;
+let from = 0;
+let rows = [];
+while (true) {
+  const r = await supabase.from("historical_ohlc")
+    .select("date,close").eq("symbol", sym)
+    .gte("date", sinceStr).order("date", { ascending: true })
+    .range(from, from + PAGE - 1);
+  if (r.error) throw ...;
+  rows.push(...r.data);
+  if (r.data.length < PAGE) break;
+  from += PAGE;
+}
+```
 
-- Rinomino `trading-engine` → `satellite-engine` (cron 15 min): kill-switch, regime medio BTC vs SMA50 + F&G, gestione posizioni satellite con stop ATR, cooldown, tetto mensile, ordini limit preferiti (placeholder in paper).
-- Nuova `core-engine` (cron 1/giorno): regime macro BTC vs SMA200, ribilancio mensile core BTC/ETH ai pesi.
-- `daily-summary` aggiornato con sezioni Core/Satellite.
-- Aggiorno UI **Posizioni** e **Storico** con colonna **Sleeve**.
+Stesso fix per `fg_history`. Bump cache hash da `v3|` → `v4|` per invalidare i risultati troncati. Risultato atteso: 5y → 2021-06-15 → 2026-06-15 (~5y reali); 3y → 2023-06-15 → 2026-06-15 (warning sparisce).
+
+### B. Preset detection / riallineamento (`src/lib/strategy-presets.ts` + `src/routes/_authenticated/settings.tsx`)
+Due opzioni, propongo la **(2)** che è più solida:
+
+1. (Quick fix) Rimuovere `take_profit_pct` da `DETECT_NUMERIC` → la riga "Custom" sparirebbe ma i parametri reali restano disallineati dal preset dichiarato (stop_loss/take-profit non in linea con v2).
+
+2. **(Consigliato)** Quando `strategy_preset` salvato ≠ `detectPreset()` calcolato, mostrare nella pagina Rischio un banner "Preset disallineato — i valori salvati non corrispondono più al preset `<X>`" con un bottone **"Riallinea al preset"** che chiama `applyStrategyPreset({preset: stored})`. Inoltre eseguire una migrazione one-shot che, per ogni utente con `strategy_preset='balanced' | 'conservative' | 'aggressive'`, riallinea i campi v2 (`take_profit_pct`, `min_target_pct`, ecc.) ai valori del preset. Così l'utente esistente parte già pulito e quelli futuri hanno comunque l'escape hatch.
+
+### C. Grafico — colore distinto per la linea Strategia (`src/routes/_authenticated/strategia.tsx`)
+Sostituire `stroke="hsl(var(--primary))"` con un blu/ciano distinto (es. `#60a5fa`) e portare lo `strokeWidth` a `2.5` per dare priorità visiva alla linea principale. Aggiungere `isAnimationActive={false}` su tutte le `<Line>` se non già presente per evitare flash su re-render.
+
+### D. Documento di strategia
+Nessuna modifica al contenuto di `STRATEGIA.md` v2: il problema è solo nel codice (caching + colori + sync preset).
 
 ---
 
-## Dettagli tecnici
+## File toccati
+- `src/lib/backtest.functions.ts` — paginazione query + bump hash a `v4|`
+- `src/lib/strategy-presets.ts` — (eventuale tweak `DETECT_NUMERIC`)
+- `src/routes/_authenticated/settings.tsx` — banner "Riallinea al preset"
+- `src/routes/_authenticated/strategia.tsx` — colore linea Strategia
+- Una migrazione SQL one-shot per riallineare le `settings` esistenti ai valori dei preset v2
 
-- Tutte le migrations seguono il pattern del progetto (CREATE TABLE → GRANT → RLS → POLICY).
-- Le edge function nuove vanno aggiunte a `supabase/config.toml` e schedulate via pg_cron.
-- Cache backtest invalidata cambiando l'hash a `v3|`.
-- Nessuna logica di trading nel frontend (regola fondamentale v2 §RULE).
+## Cosa non faccio
+- Non riavvio sync storico (i dati ci sono già fino al 2020-12-24, il bug era solo nel fetch lato backtest).
+- Non tocco engine di backtest (`backtest.server.ts`) né i preset numerici v2 — sono coerenti con `STRATEGIA.md` v2.
 
----
-
-## Conferme che mi servono prima di partire
-
-1. **Procediamo subito con tutte e 3 le fasi** in un'unica run lunga, o vuoi che ti restituisca il controllo dopo la Fase 1 per validarla?
-2. I valori dei tre preset v2 (tabella §1.3) ti vanno bene come default, o vuoi ritoccarli?
-3. Posso **eliminare la pagina/edit dei pesi sentiment** (diventano derivati automatici), lasciando solo i toggle ON/OFF?
+Procedo?

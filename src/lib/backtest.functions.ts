@@ -31,7 +31,60 @@ const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
 function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `v3|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+  return `v4|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+}
+
+// PostgREST applica un max-rows interno (1000) che .range(0, 9999) NON sovrascrive:
+// per finestre > ~2.7 anni la query veniva troncata silenziosamente. Pagina finché
+// la risposta restituisce esattamente PAGE righe.
+const PAGE_SIZE = 1000;
+async function fetchOhlcAllPages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  symbol: string,
+  sinceStr: string,
+): Promise<Array<{ date: string; close: number }>> {
+  const out: Array<{ date: string; close: number }> = [];
+  let from = 0;
+  // safety cap (15k rows = ~40 anni daily)
+  while (from < 15000) {
+    const r = await supabase
+      .from("historical_ohlc")
+      .select("date,close")
+      .eq("symbol", symbol)
+      .gte("date", sinceStr)
+      .order("date", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (r.error) throw new Error(r.error.message);
+    const rows = r.data ?? [];
+    for (const row of rows) out.push({ date: row.date as string, close: Number(row.close) });
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
+async function fetchFgAllPages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  sinceStr: string,
+): Promise<Array<{ date: string; value: number }>> {
+  const out: Array<{ date: string; value: number }> = [];
+  let from = 0;
+  while (from < 15000) {
+    const r = await supabase
+      .from("fg_history")
+      .select("date,value")
+      .gte("date", sinceStr)
+      .order("date", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (r.error) throw new Error(r.error.message);
+    const rows = r.data ?? [];
+    for (const row of rows) out.push({ date: row.date as string, value: row.value });
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
 }
 
 export const runBacktestFn = createServerFn({ method: "POST" })
@@ -70,22 +123,11 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     // sorted by date returns the oldest rows first — SPX dominates and BTC/alts get truncated).
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
     const ohlcResults = await Promise.all(
-      allSyms.map((sym) =>
-        supabase
-          .from("historical_ohlc")
-          .select("date,close")
-          .eq("symbol", sym)
-          .gte("date", sinceStr)
-          .order("date", { ascending: true })
-          .range(0, 9999),
-      ),
+      allSyms.map((sym) => fetchOhlcAllPages(supabase, sym, sinceStr)),
     );
     for (let i = 0; i < allSyms.length; i++) {
-      const res = ohlcResults[i];
-      if (res.error) throw new Error(res.error.message);
-      if (res.data && res.data.length) {
-        bySym[allSyms[i]] = res.data.map((r) => ({ date: r.date as string, close: Number(r.close) }));
-      }
+      const rows = ohlcResults[i];
+      if (rows.length) bySym[allSyms[i]] = rows;
     }
     if (Object.keys(bySym).length === 0) {
       throw new Error("Storico non ancora popolato. Esegui historical-sync prima.");
@@ -94,13 +136,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       throw new Error("Storico BTC insufficiente (servono almeno 60 candele).");
     }
 
-    const fgRows = await supabase
-      .from("fg_history")
-      .select("date,value")
-      .gte("date", sinceStr)
-      .order("date", { ascending: true })
-      .range(0, 9999);
-    const fg = (fgRows.data ?? []).map((r) => ({ date: r.date as string, value: r.value }));
+    const fg = await fetchFgAllPages(supabase, sinceStr);
 
     const assets: Record<string, Array<{ date: string; close: number }>> = {};
     for (const sym of tradedSyms) {
