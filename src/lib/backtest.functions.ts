@@ -38,7 +38,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     if (cached.data) {
       const age = Date.now() - new Date(cached.data.created_at).getTime();
       if (age < 24 * 3600 * 1000) {
-        return { cached: true, ...(cached.data.result as Record<string, unknown>) };
+        return { ...(cached.data.result as Record<string, unknown>), cached: true } as BacktestPayload;
       }
     }
 

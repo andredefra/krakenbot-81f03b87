@@ -13,12 +13,14 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as AuthenticatedStrategiaRouteImport } from './routes/_authenticated/strategia'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSentimentRouteImport } from './routes/_authenticated/sentiment'
 import { Route as AuthenticatedPositionsRouteImport } from './routes/_authenticated/positions'
 import { Route as AuthenticatedModeRouteImport } from './routes/_authenticated/mode'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedDiagnosticaRouteImport } from './routes/_authenticated/diagnostica'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedBilancioRouteImport } from './routes/_authenticated/bilancio'
 import { Route as AuthenticatedAssistantRouteImport } from './routes/_authenticated/assistant'
@@ -42,6 +44,11 @@ const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedStrategiaRoute = AuthenticatedStrategiaRouteImport.update({
+  id: '/strategia',
+  path: '/strategia',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
@@ -73,6 +80,12 @@ const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDiagnosticaRoute =
+  AuthenticatedDiagnosticaRouteImport.update({
+    id: '/diagnostica',
+    path: '/diagnostica',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -101,12 +114,14 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRoute
   '/bilancio': typeof AuthenticatedBilancioRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/diagnostica': typeof AuthenticatedDiagnosticaRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
   '/positions': typeof AuthenticatedPositionsRoute
   '/sentiment': typeof AuthenticatedSentimentRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
 }
@@ -116,12 +131,14 @@ export interface FileRoutesByTo {
   '/assistant': typeof AuthenticatedAssistantRoute
   '/bilancio': typeof AuthenticatedBilancioRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/diagnostica': typeof AuthenticatedDiagnosticaRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
   '/positions': typeof AuthenticatedPositionsRoute
   '/sentiment': typeof AuthenticatedSentimentRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
 }
@@ -133,12 +150,14 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRoute
   '/_authenticated/bilancio': typeof AuthenticatedBilancioRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/diagnostica': typeof AuthenticatedDiagnosticaRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mode': typeof AuthenticatedModeRoute
   '/_authenticated/positions': typeof AuthenticatedPositionsRoute
   '/_authenticated/sentiment': typeof AuthenticatedSentimentRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
 }
@@ -150,12 +169,14 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/bilancio'
     | '/dashboard'
+    | '/diagnostica'
     | '/history'
     | '/logs'
     | '/mode'
     | '/positions'
     | '/sentiment'
     | '/settings'
+    | '/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
   fileRoutesByTo: FileRoutesByTo
@@ -165,12 +186,14 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/bilancio'
     | '/dashboard'
+    | '/diagnostica'
     | '/history'
     | '/logs'
     | '/mode'
     | '/positions'
     | '/sentiment'
     | '/settings'
+    | '/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
   id:
@@ -181,12 +204,14 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/_authenticated/bilancio'
     | '/_authenticated/dashboard'
+    | '/_authenticated/diagnostica'
     | '/_authenticated/history'
     | '/_authenticated/logs'
     | '/_authenticated/mode'
     | '/_authenticated/positions'
     | '/_authenticated/sentiment'
     | '/_authenticated/settings'
+    | '/_authenticated/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
   fileRoutesById: FileRoutesById
@@ -228,6 +253,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/strategia': {
+      id: '/_authenticated/strategia'
+      path: '/strategia'
+      fullPath: '/strategia'
+      preLoaderRoute: typeof AuthenticatedStrategiaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
@@ -271,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/diagnostica': {
+      id: '/_authenticated/diagnostica'
+      path: '/diagnostica'
+      fullPath: '/diagnostica'
+      preLoaderRoute: typeof AuthenticatedDiagnosticaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -306,24 +345,28 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssistantRoute: typeof AuthenticatedAssistantRoute
   AuthenticatedBilancioRoute: typeof AuthenticatedBilancioRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDiagnosticaRoute: typeof AuthenticatedDiagnosticaRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedModeRoute: typeof AuthenticatedModeRoute
   AuthenticatedPositionsRoute: typeof AuthenticatedPositionsRoute
   AuthenticatedSentimentRoute: typeof AuthenticatedSentimentRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedStrategiaRoute: typeof AuthenticatedStrategiaRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssistantRoute: AuthenticatedAssistantRoute,
   AuthenticatedBilancioRoute: AuthenticatedBilancioRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDiagnosticaRoute: AuthenticatedDiagnosticaRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedModeRoute: AuthenticatedModeRoute,
   AuthenticatedPositionsRoute: AuthenticatedPositionsRoute,
   AuthenticatedSentimentRoute: AuthenticatedSentimentRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedStrategiaRoute: AuthenticatedStrategiaRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
