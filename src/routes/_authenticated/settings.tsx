@@ -16,18 +16,59 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
-const FIELDS: { key: string; label: string; suffix?: string; help?: string }[] = [
-  { key: "capital_reference", label: "Capitale di riferimento", suffix: "USD" },
-  { key: "kill_switch_floor", label: "Kill-switch (stop globale)", suffix: "USD", help: "Bot spento se il valore scende sotto" },
-  { key: "max_positions", label: "Max posizioni contemporanee" },
-  { key: "max_position_pct", label: "Dimensione max per posizione", suffix: "%" },
-  { key: "stop_loss_pct", label: "Stop loss per trade", suffix: "%" },
-  { key: "trailing_activate_pct", label: "Trailing — attivazione a", suffix: "%" },
-  { key: "trailing_gap_pct", label: "Trailing — gap dal massimo", suffix: "%" },
-  { key: "take_profit_pct", label: "Take-profit parziale", suffix: "%" },
-  { key: "min_target_pct", label: "Target minimo per aprire", suffix: "%" },
-  { key: "daily_loss_limit_pct", label: "Limite perdita giornaliero", suffix: "%" },
+type Section = {
+  title: string;
+  fields: { key: string; label: string; suffix?: string; help?: string }[];
+};
+
+const SECTIONS: Section[] = [
+  {
+    title: "Capitale e protezioni globali",
+    fields: [
+      { key: "capital_reference", label: "Capitale di riferimento", suffix: "USD" },
+      { key: "kill_switch_floor", label: "Kill-switch (stop globale)", suffix: "USD", help: "Bot spento se il valore scende sotto" },
+      { key: "daily_loss_limit_pct", label: "Limite perdita giornaliero", suffix: "%" },
+    ],
+  },
+  {
+    title: "Filtri universo (cancelli liquidità)",
+    fields: [
+      { key: "min_volume_24h", label: "Volume 24h minimo", suffix: "USD", help: "Solo asset con almeno questo volume diventano eleggibili" },
+      { key: "max_spread_pct", label: "Spread massimo", suffix: "%", help: "Spread bid-ask oltre cui l'asset viene escluso" },
+      { key: "min_listing_age_days", label: "Età minima dalla quotazione", suffix: "giorni" },
+    ],
+  },
+  {
+    title: "Satellite — gestione posizione",
+    fields: [
+      { key: "max_satellite_positions", label: "Max posizioni satellite" },
+      { key: "risk_per_trade_pct", label: "Rischio per trade", suffix: "%", help: "% del portafoglio a rischio in caso di stop colpito" },
+      { key: "stop_atr_mult", label: "Moltiplicatore ATR per lo stop", help: "Stop = max(stop_min, mult × ATR)" },
+      { key: "stop_min_pct", label: "Stop minimo (floor)", suffix: "%" },
+      { key: "trailing_activate_pct", label: "Trailing — attivazione a", suffix: "%" },
+      { key: "trailing_gap_pct", label: "Trailing — gap dal massimo", suffix: "%" },
+      { key: "take_profit_pct", label: "Take-profit parziale", suffix: "%" },
+      { key: "min_target_pct", label: "Target minimo per aprire", suffix: "%" },
+    ],
+  },
+  {
+    title: "Disciplina commissioni",
+    fields: [
+      { key: "monthly_trade_cap", label: "Tetto trade satellite / mese" },
+      { key: "cooldown_hours", label: "Cooldown stesso asset", suffix: "h" },
+    ],
+  },
+  {
+    title: "Regime e sentiment",
+    fields: [
+      { key: "macro_ma_period", label: "Periodo media macro (BTC)", suffix: "giorni" },
+      { key: "mid_ma_period", label: "Periodo media medio (BTC)", suffix: "giorni" },
+      { key: "fg_greed_cap", label: "Fear & Greed cap (gate satellite)" },
+    ],
+  },
 ];
+
+const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 
 function SettingsPage() {
   const qc = useQueryClient();
@@ -41,14 +82,14 @@ function SettingsPage() {
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
-  const [timeframe, setTimeframe] = useState("1h");
+  const [timeframe, setTimeframe] = useState("4h");
 
   useEffect(() => {
     if (q.data) {
       const next: Record<string, string> = {};
-      for (const f of FIELDS) next[f.key] = String((q.data as Record<string, unknown>)[f.key] ?? "");
+      for (const f of ALL_FIELDS) next[f.key] = String((q.data as Record<string, unknown>)[f.key] ?? "");
       setForm(next);
-      setTimeframe(q.data.timeframe ?? "1h");
+      setTimeframe(q.data.timeframe ?? "4h");
     }
   }, [q.data]);
 
@@ -56,12 +97,11 @@ function SettingsPage() {
     mutationFn: async () => {
       if (!q.data) throw new Error("Nessuna riga settings");
       const patch: Record<string, number | string> = { timeframe };
-      for (const f of FIELDS) {
+      for (const f of ALL_FIELDS) {
         const n = Number(form[f.key]);
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
-      // Detect preset: include unchanged fields (fg_greed_cap, regime_filter) from current row
       const merged = { ...(q.data as Record<string, unknown>), ...patch };
       const newPreset = detectPreset(merged);
       patch.strategy_preset = newPreset;
@@ -86,21 +126,19 @@ function SettingsPage() {
   const currentPreset = getPreset(currentPresetId);
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Impostazioni rischio</h1>
-        <p className="text-sm text-muted-foreground">Parametri della strategia (modificabili in qualsiasi momento)</p>
+        <p className="text-sm text-muted-foreground">Parametri della Strategia v2 (Core-Satellite). Modificabili in qualsiasi momento.</p>
       </div>
 
       {q.data && (
         <Card className={currentPresetId === "custom" ? "border-amber-500/50" : "border-primary/40"}>
           <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
-              {currentPresetId === "custom" ? (
-                <AlertTriangle className="size-5 text-amber-500 shrink-0" />
-              ) : (
-                <Sparkles className="size-5 text-primary shrink-0" />
-              )}
+              {currentPresetId === "custom"
+                ? <AlertTriangle className="size-5 text-amber-500 shrink-0" />
+                : <Sparkles className="size-5 text-primary shrink-0" />}
               <div>
                 <div className="font-medium text-sm">
                   Preset attivo: <span className="text-primary">{currentPreset.name}</span>
@@ -122,58 +160,66 @@ function SettingsPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Parametri</CardTitle>
-          <CardDescription>
-            Modificando un valore qui, se non corrisponde più a un preset, il sistema lo marcherà come <strong>Custom</strong>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {q.isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : (
-            <form
-              className="grid grid-cols-1 md:grid-cols-2 gap-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                save.mutate();
-              }}
-            >
-              {FIELDS.map((f) => (
-                <div key={f.key} className="space-y-1.5">
-                  <Label htmlFor={f.key}>
-                    {f.label}
-                    {f.suffix && <span className="text-muted-foreground"> ({f.suffix})</span>}
-                  </Label>
-                  <Input
-                    id={f.key}
-                    type="number"
-                    step="any"
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
-                  />
-                  {f.help && <p className="text-xs text-muted-foreground">{f.help}</p>}
+      {q.isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+        </div>
+      ) : (
+        <form
+          className="space-y-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          {SECTIONS.map((sec) => (
+            <Card key={sec.title}>
+              <CardHeader>
+                <CardTitle className="text-base">{sec.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {sec.fields.map((f) => (
+                    <div key={f.key} className="space-y-1.5">
+                      <Label htmlFor={f.key}>
+                        {f.label}
+                        {f.suffix && <span className="text-muted-foreground"> ({f.suffix})</span>}
+                      </Label>
+                      <Input
+                        id={f.key}
+                        type="number"
+                        step="any"
+                        value={form[f.key] ?? ""}
+                        onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                      />
+                      {f.help && <p className="text-xs text-muted-foreground">{f.help}</p>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <div className="space-y-1.5">
+              </CardContent>
+            </Card>
+          ))}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Timeframe</CardTitle>
+              <CardDescription>v2 raccomandato: 4h o daily (meno rumore).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-xs space-y-1.5">
                 <Label htmlFor="timeframe">Timeframe segnali</Label>
-                <Input id="timeframe" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} placeholder="1h" />
-                <p className="text-xs text-muted-foreground">Es. 1h o 4h. Swing, non scalping.</p>
+                <Input id="timeframe" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} placeholder="4h" />
               </div>
-              <div className="md:col-span-2 flex justify-end pt-2">
-                <Button type="submit" disabled={save.isPending}>
-                  {save.isPending ? "Salvo…" : "Salva impostazioni"}
-                </Button>
-              </div>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? "Salvo…" : "Salva impostazioni"}
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

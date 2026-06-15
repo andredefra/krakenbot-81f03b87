@@ -1,56 +1,88 @@
-# Backtest: storico esteso + trasparenza fee/sentiment
 
-## Problema
+# Migrazione a v2 — Core-Satellite + Universo Dinamico
 
-Selezionando "5 anni" il grafico parte da agosto 2024 (~2 anni). Causa: l'endpoint pubblico Kraken `OHLC` (interval=1440) restituisce un massimo di ~720 candele daily per pair e non permette di andare più indietro nel tempo. Il backtest si allinea sul timeline BTC quindi tutto viene troncato.
+Sostituisco `STRATEGIA.md` + `BUILD_SPEC.md` con le v2 e allineo codice + DB + UI. Procediamo in 3 fasi per non rompere nulla in un colpo solo.
 
-In più non è chiaro all'utente cosa entra nel calcolo: commissioni, slippage, sentiment.
+---
 
-## Cosa fare
+## Fase 1 — Fondamenta (docs, DB, presets, sentiment, UI Strategia/Rischio/Sentiment)
 
-### 1. Fonte storica crypto più lunga (CoinGecko)
+Tutto ciò che si vede subito e che serve per le fasi successive.
 
-Aggiungere in `supabase/functions/historical-sync/index.ts` un fetcher CoinGecko come **fallback/estensione** per BTC/ETH/SOL/ADA/LINK/AVAX/DOT/XRP/LTC:
+### 1.1 Documenti di verità
+- Sovrascrivo `src/lib/assistant/STRATEGIA.md` con `STRATEGIA_v2.md`.
+- Sovrascrivo `src/lib/assistant/BUILD_SPEC.md` con `BUILD_SPEC_v2.md`.
+- L'assistente userà automaticamente le v2 (già caricate via `?raw`).
 
-- Endpoint pubblico: `https://api.coingecko.com/api/v3/coins/{id}/market_chart?vs_currency=usd&days=max&interval=daily`
-- Restituisce close daily fino al 2013 (BTC) / inception per le altre
-- Gratuito senza API key (rate limit ~10-30 req/min → fetch sequenziale con `await sleep(2500)` tra simboli)
-- Strategia merge: prima carica CoinGecko (storico lungo, solo close), poi sovrascrive con Kraken (ultimi 2 anni, OHLC completo). Upsert per `(symbol, date)` già gestito.
+### 1.2 Schema DB (migration)
+Aggiungo a `public.settings` i nuovi campi v2 (con default ragionevoli):
+`core_satellite_split jsonb {core:0.6,satellite:0.4}`, `core_weights jsonb {BTC:0.6,ETH:0.4}`,
+`min_volume_24h numeric=5_000_000`, `max_spread_pct numeric=0.3`, `min_listing_age_days int=60`,
+`macro_ma_period int=200`, `mid_ma_period int=50`, `rebalance_frequency text='monthly'`,
+`risk_per_trade_pct numeric=3`, `stop_atr_mult numeric=2`, `stop_min_pct numeric=12`,
+`monthly_trade_cap int=8`, `cooldown_hours int=48`, `max_satellite_positions int=2`.
+Creo `public.universe` (asset, base, quote, volume_24h, spread_pct, first_seen, eligible, excluded_reason, last_checked) con RLS + GRANT come da convenzioni del progetto.
+Aggiungo colonna `sleeve text check in ('core','satellite')` a `positions` (default `satellite`).
+Aggiungo `core_value` e `satellite_value` a `portfolio_snapshots`.
 
-Vantaggi: 5 anni reali per tutti, niente costi, niente chiavi.
+### 1.3 Presets riscritti (Core-Satellite v2)
+Riscrivo `src/lib/strategy-presets.ts`. I tre preset cambiano significato:
 
-Limite accettato: per il periodo > 2 anni avremo solo `close` (high/low/open = close). Il backtest engine usa solo `close`, quindi nessun impatto sui risultati.
+| Preset | Split Core/Sat | Risk/trade | Stop | Trailing | Min target | Trade/mese | Cooldown |
+|---|---|---|---|---|---|---|---|
+| Conservativo | 75 / 25 | 2% | max(12%, 2×ATR) | +15/-10 | +5% | 4 | 72h |
+| Bilanciato (default v2) | 60 / 40 | 3% | max(12%, 2×ATR) | +12/-8 | +4% | 8 | 48h |
+| Aggressivo | 45 / 55 | 4% | max(10%, 1.8×ATR) | +12/-8 | +3% | 12 | 24h |
 
-### 2. Validazione "Periodo" in UI
+Timeframe sempre `4h/daily`. Aggiorno `detectPreset` per i nuovi campi.
 
-Se l'utente seleziona 5 anni ma in DB ci sono meno candele BTC, mostrare un badge sotto il chart: "Storico disponibile da AAAA-MM-DD".
+### 1.4 Sentiment pesato dalla strategia
+Tolgo l'edit manuale dei pesi: in `Sentiment` resta solo ON/OFF + preview del peso. I pesi sono derivati dal preset attivo (funzione pura `deriveSentimentWeights(preset, enabledSources)` in `src/lib/strategy-presets.ts`):
+- Conservativo: F&G 0.7, LunarCrush 0.2, Santiment 0.1 (sentiment "gate" forte).
+- Bilanciato: F&G 0.5, LunarCrush 0.3, Santiment 0.2.
+- Aggressivo: F&G 0.3, LunarCrush 0.4, Santiment 0.3 (più peso al social per cogliere momentum).
+Vengono riscalati sulle sole sorgenti attive. Al cambio preset o toggle, `settings.sentiment_weights` si aggiorna server-side.
 
-### 3. Trasparenza fee/sentiment nella pagina Strategia
+### 1.5 UI
+- **Strategia**: cards riallineate al nuovo significato (Core-Satellite, universo dinamico, target minimo +4%, max 2 pos satellite, tetto mensile, cooldown). Sezione "Cosa è incluso" aggiornata.
+- **Impostazioni rischio**: nuovi campi (split, pesi core, filtri universo, risk_per_trade, stop_atr_mult, monthly_trade_cap, cooldown_hours). Detect preset → Custom se modifico.
+- **Sentiment**: solo toggle; mostra peso derivato in sola lettura con tooltip "deriva dal preset".
 
-Aggiungere sotto il grafico una piccola sezione "Cosa è incluso nel calcolo":
+### 1.6 Backtest
+Aggiorno `backtest.functions.ts` + `backtest.server.ts` per simulare Core-Satellite v2:
+- 60/40 (o split del preset) BTC/ETH core con regime macro BTC vs SMA200 (uscita/rientro);
+- satellite max 2 posizioni con stop ATR, cooldown, tetto mensile, target +4%;
+- aggiungo benchmark **DCA BTC/ETH 60/40** (richiesto da §12 v2).
+Invalido cache con prefisso `v3|...`.
 
-- **Commissioni**: 0.4% per lato (taker fee Kraken Pro tier base)
-- **Slippage**: 0.1% per lato
-- **Filtro Fear & Greed**: blocca nuovi ingressi sopra la soglia del preset (Bilanciato: 75)
-- **Filtro regime BTC**: SMA50/SMA200 a seconda del preset
+---
 
-Così l'utente sa esattamente cosa sta vedendo.
+## Fase 2 — Universe-scanner + pagina Universo
 
-### 4. Invalidare la cache backtest
+- Nuova edge function `supabase/functions/universe-scanner` (cron ~2h via pg_cron + pg_net): elenco coppie Kraken pubbliche → volume24h + spread → upsert in `universe` con `eligible` e `excluded_reason`. `first_seen` auto-popolato.
+- Nuova route `src/routes/_authenticated/universe.tsx`: tabella con asset, volume, spread%, età, esito filtri; filtri client per "eligibili".
+- Voce nel menu laterale.
 
-`backtest_runs` ha risultati cachati con lo storico vecchio: bumpare `hashInput` aggiungendo un suffisso versione (`v2`) per forzare ricalcolo.
+## Fase 3 — Split del motore: satellite-engine + core-engine
 
-## File toccati
+- Rinomino `trading-engine` → `satellite-engine` (cron 15 min): kill-switch, regime medio BTC vs SMA50 + F&G, gestione posizioni satellite con stop ATR, cooldown, tetto mensile, ordini limit preferiti (placeholder in paper).
+- Nuova `core-engine` (cron 1/giorno): regime macro BTC vs SMA200, ribilancio mensile core BTC/ETH ai pesi.
+- `daily-summary` aggiornato con sezioni Core/Satellite.
+- Aggiorno UI **Posizioni** e **Storico** con colonna **Sleeve**.
 
-- `supabase/functions/historical-sync/index.ts` — aggiunta `fetchCoinGeckoDailyHistory()` + merge prima di Kraken
-- `src/lib/backtest.functions.ts` — bump versione hash
-- `src/routes/_authenticated/strategia.tsx` — badge "storico disponibile da" + sezione "Cosa è incluso"
+---
 
-## Dopo il deploy
+## Dettagli tecnici
 
-Eseguo `historical-sync` per popolare lo storico CoinGecko (la prima sync impiega ~30-60 secondi per i 9 simboli per rispettare i rate limit).
+- Tutte le migrations seguono il pattern del progetto (CREATE TABLE → GRANT → RLS → POLICY).
+- Le edge function nuove vanno aggiunte a `supabase/config.toml` e schedulate via pg_cron.
+- Cache backtest invalidata cambiando l'hash a `v3|`.
+- Nessuna logica di trading nel frontend (regola fondamentale v2 §RULE).
 
-## Note
+---
 
-- Non tocco l'engine `backtest.server.ts`: fee, slippage e F&G greed cap sono già applicati correttamente.
-- Non aggiungo "uscite su sentiment estremo" perché non è in STRATEGIA.md — se lo vuoi lo discutiamo a parte.
+## Conferme che mi servono prima di partire
+
+1. **Procediamo subito con tutte e 3 le fasi** in un'unica run lunga, o vuoi che ti restituisca il controllo dopo la Fase 1 per validarla?
+2. I valori dei tre preset v2 (tabella §1.3) ti vanno bene come default, o vuoi ritoccarli?
+3. Posso **eliminare la pagina/edit dei pesi sentiment** (diventano derivati automatici), lasciando solo i toggle ON/OFF?
