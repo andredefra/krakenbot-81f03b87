@@ -37,14 +37,6 @@ function hashInput(input: { preset: string; years: number; universe: string; sta
 }
 
 
-// Universe = which crypto assets get traded (BTC always loaded for regime + benchmark)
-const CORE_ASSETS = ["ETH", "SOL"];
-const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
-
-function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
-}
-
 export const runBacktestFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => inputSchema.parse(d))
