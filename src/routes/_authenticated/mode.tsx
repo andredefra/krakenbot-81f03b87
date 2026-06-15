@@ -48,7 +48,7 @@ function ModePage() {
   });
 
   const goLive = useMutation({
-    mutationFn: () => generate({ data: {} as never }),
+    mutationFn: () => generate(),
     onSuccess: (res) => {
       toast.success(
         `LIVE attivo · report Paper generato (P&L ${res.summary.pnl.toFixed(2)} USD). Trovi il PDF nei Log.`,
