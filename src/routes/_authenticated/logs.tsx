@@ -31,31 +31,45 @@ function LogsPage() {
   const { mode: activeMode } = useActiveMode();
   const [viewMode, setViewMode] = useState<"current" | "paper-archive">("current");
   const filterMode = viewMode === "current" ? activeMode : "paper";
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filterMode]);
 
   const q = useQuery({
-    queryKey: ["events_log", filterMode],
+    queryKey: ["events_log", filterMode, page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error, count } = await supabase
         .from("events_log")
-        .select("id,ts,level,component,message,mode,payload")
+        .select("id,ts,level,component,message,mode,payload", { count: "exact" })
         .eq("mode", filterMode)
         .order("ts", { ascending: false })
-        .limit(200);
+        .range(from, to);
       if (error) throw error;
-      return (data ?? []) as EventRow[];
+      return { rows: (data ?? []) as EventRow[], total: count ?? 0 };
     },
   });
 
   useEffect(() => {
     const channel = supabase
       .channel("events-log")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "events_log" }, () => q.refetch())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "events_log" }, () => {
+        if (page === 0) q.refetch();
+      })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page]);
+
+  const total = q.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const rows = q.data?.rows ?? [];
 
   return (
     <div className="space-y-6">
@@ -63,7 +77,7 @@ function LogsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Log</h1>
           <p className="text-sm text-muted-foreground">
-            Ultimi 200 eventi · modalità {filterMode.toUpperCase()}
+            {total} eventi totali · modalità {filterMode.toUpperCase()}
           </p>
         </div>
         {activeMode === "live" && (
@@ -88,7 +102,9 @@ function LogsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{q.data?.length ?? 0} eventi</CardTitle>
+          <CardTitle>
+            {rows.length} eventi · pagina {page + 1} di {totalPages}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {q.isLoading ? (
@@ -97,16 +113,41 @@ function LogsPage() {
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
             </div>
-          ) : (q.data?.length ?? 0) === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">Nessun evento ancora.</div>
           ) : (
             <ul className="divide-y divide-border">
-              {q.data!.map((e) => (
+              {rows.map((e) => (
                 <EventRowItem key={e.id} e={e} />
               ))}
             </ul>
           )}
         </CardContent>
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-3 border-t border-border text-sm">
+            <div className="text-xs text-muted-foreground">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} di {total}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0 || q.isFetching}
+              >
+                Precedente
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1 || q.isFetching}
+              >
+                Successiva
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
