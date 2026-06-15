@@ -50,18 +50,6 @@ Deno.serve(async (req) => {
 
   const report: Record<string, unknown> = {};
   try {
-    // 1. Crypto via Kraken (5y ≈ 1825 candele, Kraken restituisce ~720 per call → paginare)
-    for (const [sym, pair] of Object.entries(CRYPTO_SYMBOLS)) {
-      try {
-        const rows = await fetchKrakenDailyHistory(pair, 5);
-        if (rows.length) {
-          await upsertOhlc(supa, sym, "kraken", rows);
-          report[sym] = rows.length;
-        }
-      } catch (e) {
-        report[`${sym}_error`] = String(e);
-      }
-    }
 
     // 1b. Storico esteso (>2 anni) via CoinGecko — fatto PRIMA di Kraken così Kraken
     // sovrascrive l'overlap con OHLC completo. Solo close, ma il backtest usa solo close.
