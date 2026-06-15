@@ -401,6 +401,33 @@ function BacktestSection() {
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
 
+            {(() => {
+              const eq = runMut.data.equity as Array<{ date: string }>;
+              const first = eq[0]?.date;
+              const last = eq[eq.length - 1]?.date;
+              if (!first || !last) return null;
+              const reqYears = years;
+              const actualYears = (new Date(last).getTime() - new Date(first).getTime()) / (365.25 * 86400_000);
+              const truncated = actualYears < reqYears - 0.2;
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Storico effettivo: <span className="tabular-nums">{first}</span> → <span className="tabular-nums">{last}</span> (~{actualYears.toFixed(1)} anni)
+                  {truncated && (
+                    <span className="text-amber-500"> · Hai chiesto {reqYears} anni ma in DB c'è solo storico più breve — riesegui <code>historical-sync</code> per estendere via CoinGecko.</span>
+                  )}
+                </p>
+              );
+            })()}
+
+            <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
+              <div className="font-medium text-foreground">Cosa è incluso nel calcolo</div>
+              <div>• <strong>Commissioni</strong>: 0.4% per lato (taker fee Kraken Pro, tier base)</div>
+              <div>• <strong>Slippage</strong>: 0.1% per lato (stima conservativa su market order)</div>
+              <div>• <strong>Filtro Fear &amp; Greed</strong>: blocca nuovi ingressi quando F&amp;G supera la soglia del preset (Bilanciato: 75, Conservativo: 70, Aggressivo: 85)</div>
+              <div>• <strong>Filtro regime BTC</strong>: ingressi solo se BTC sopra SMA50 (Conservativo/Bilanciato) o SMA200 (Aggressivo)</div>
+              <div>• <strong>Trailing stop, take-profit, kill-switch giornaliero</strong>: applicati come da preset</div>
+              <div className="pt-1 opacity-80">Storico crypto: CoinGecko (storico lungo) + Kraken OHLC (~2 anni recenti). S&amp;P 500: Yahoo/Stooq.</div>
+            </div>
 
             {runMut.data.cached && (
               <p className="text-xs text-muted-foreground">📦 Risultato dalla cache (valido 24h)</p>
