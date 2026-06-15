@@ -17,21 +17,6 @@ const CHAT_ID = "main";
 
 export function AssistantChat({ className }: { className?: string }) {
   const qc = useQueryClient();
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) setToken(data.session?.access_token ?? null);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setToken(session?.access_token ?? null);
-    });
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
 
   const historyQ = useQuery({
     queryKey: ["chat-history"],
@@ -42,10 +27,13 @@ export function AssistantChat({ className }: { className?: string }) {
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        headers: (): Record<string, string> =>
-          token ? { Authorization: `Bearer ${token}` } : {},
+        headers: async (): Promise<Record<string, string>> => {
+          const { data } = await supabase.auth.getSession();
+          const t = data.session?.access_token;
+          return t ? { Authorization: `Bearer ${t}` } : {};
+        },
       }),
-    [token],
+    [],
   );
 
   const { messages, sendMessage, status, setMessages, stop } = useChat({
