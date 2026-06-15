@@ -58,7 +58,8 @@ function SettingsPage() {
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
-      const { error } = await supabase.from("settings").update(patch).eq("id", q.data.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.from("settings").update(patch as any).eq("id", q.data.id);
       if (error) throw error;
     },
     onSuccess: () => {
