@@ -15,9 +15,11 @@ import {
   Power,
   ScrollText,
   Bot,
+  MessageCircle,
   LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
+import { FloatingChat } from "@/components/assistant/FloatingChat";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -37,6 +39,7 @@ const NAV = [
   { to: "/sentiment", label: "Sentiment", icon: Activity },
   { to: "/mode", label: "Modalità", icon: Power },
   { to: "/logs", label: "Log", icon: ScrollText },
+  { to: "/assistant", label: "Assistente", icon: MessageCircle },
 ] as const;
 
 function AuthenticatedLayout() {
@@ -138,6 +141,8 @@ function AuthenticatedLayout() {
           <Outlet />
         </main>
       </div>
+
+      <FloatingChat />
     </div>
   );
 }

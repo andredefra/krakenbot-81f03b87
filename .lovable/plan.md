@@ -1,55 +1,60 @@
-## Architettura
+## Parte 1 — Rendere visibile la chat AI
 
-**Backend (TanStack server route + AI SDK + Lovable AI Gateway)**
-- Endpoint streaming `src/routes/api/chat.ts` (POST), modello `google/gemini-3-flash-preview`.
-- Autenticato via `requireSupabaseAuth` → ogni tool agisce sui dati dell'utente loggato (RLS).
-- System prompt costruito a partire da `STRATEGIA.md` + `BUILD_SPEC.md` (li includo come testo statico nel prompt) + ruolo "super-helper trading crypto".
-- Tool calling AI SDK: ogni azione mutativa ha `needsApproval: true` → l'utente conferma in chat prima dell'esecuzione.
+La chat è già stata costruita (`AssistantChat`, `FloatingChat`, route `/assistant`, endpoint `/api/chat`, tool, persistenza DB) ma non è agganciata al layout, quindi non la vedi.
 
-**Tool disponibili al modello**
+Cosa farò:
+1. Aggiungere la voce **"Assistente"** nella sidebar di `src/routes/_authenticated/route.tsx` (icona Bot, link a `/assistant`).
+2. Montare `<FloatingChat />` dentro lo stesso layout, dopo `<main>`, così la bolla in basso a destra appare su **tutte** le pagine autenticate.
+3. Verificare in preview che: bolla visibile, click apre lo sheet, pagina `/assistant` carica, primo messaggio funziona.
 
-| Tool | Tipo | Approval |
-|---|---|---|
-| `getSettings` | lettura settings | no |
-| `getOpenPositions` | lettura posizioni aperte + uPnL | no |
-| `getRecentEvents` | ultimi N log da `events_log` | no |
-| `getLatestSentiment` | ultimo snapshot sentiment + F&G | no |
-| `getPortfolio` | snapshot equity recenti | no |
-| `updateRiskSettings` | update parziale parametri rischio | sì |
-| `updateSentimentSettings` | toggle/peso fonti sentiment | sì |
-| `setBotRunning` | accendi/spegni bot | sì |
-| `setBotMode` | paper/live (live bloccato → errore Fase 1) | sì |
-| `closePosition` | chiude trade PAPER manualmente | sì |
+Niente cambia su logica/tool della chat — solo wiring UI.
 
-Ogni tool valida input con Zod, esegue via Supabase con RLS, scrive una riga in `events_log` ("assistente: ha modificato X"), e — per le azioni — notifica Telegram con il prefisso `[PAPER]`.
+## Parte 2 — Separare Paper da Live + report PDF al go-live
 
-**Persistenza chat (una conversazione continua su DB)**
-Nuova tabella `chat_messages` (`user_id`, `message_id` text, `role` text, `parts` jsonb, `created_at`), RLS per `auth.uid()`. Il route serve la cronologia via server fn `getChatHistory` e salva ogni messaggio (utente + assistente) in `onFinish` di `toUIMessageStreamResponse`.
+L'obiettivo è: quando passerai a Live, i dati paper restano "congelati" e ricevi nei log un PDF scaricabile con il resoconto della Fase Paper, da mostrare a te o a investitori.
 
-**UI (AI Elements installati: conversation, message, prompt-input, shimmer, tool)**
-- `src/components/assistant/AssistantChat.tsx` — componente unico riutilizzato in entrambi i posti.
-- `src/components/assistant/FloatingChat.tsx` — bubble in basso a destra montato nel layout `_authenticated/route.tsx`. Click → sheet/drawer laterale che renderizza `<AssistantChat />`.
-- Nuova route `src/routes/_authenticated/assistant.tsx` — pagina dedicata a tutta altezza con lo stesso `<AssistantChat />` e lo stesso `chatId="main"` → entrambi vedono e scrivono la stessa conversazione.
-- Nuova voce di navigazione "Assistente" nella sidebar.
-- Stile: bubble assistente senza sfondo, bubble utente con `primary`/`primary-foreground`, tool call collassati di default, indicatore "Sto pensando…" durante lo streaming, markdown reso con `MessageResponse`.
-- Logo agente: piccola icona Bot esistente del progetto (no `Sparkles`).
+### Separazione dati paper / live
 
-**Sicurezza / RLS**
-- Tutti i tool passano per `requireSupabaseAuth`; nessun service-role esposto.
-- Tool mutativi confermano con `needsApproval` prima di toccare il DB.
-- `setBotMode('live')` restituisce errore esplicito "Fase 1 — Live non abilitato".
+Tutte le tabelle operative hanno già modalità implicita ma non filtrata. Aggiungo una colonna `mode` (`paper` | `live`, default `paper`) su:
+- `positions`
+- `events_log`
+- `portfolio_snapshots`
 
-## Signup pubblici Supabase
-Non è una modifica al codice/DB ma una toggle del pannello Auth, quindi resta a te (1 click). Te la riepilogo nel mio messaggio fuori dal piano con il link diretto.
+Backfill: tutte le righe esistenti → `mode = 'paper'`.
+Tutte le pagine del cruscotto (Dashboard, Posizioni, Storico, Sentiment, Log) filtreranno per la **modalità attualmente attiva** in `settings.mode`. Così quando passi a Live vedi solo i numeri Live; per rivedere il Paper basterà uno switch "Mostra archivio Paper" (toggle in alto a destra delle pagine interessate).
 
-## Cosa NON faccio
-- Niente Edge Functions: tutto via TanStack server route / `createServerFn` (allineato al modern stack).
-- Niente azioni "agentiche" senza conferma: ogni write passa da approval.
-- Non aggiungo trigger sulla tabella `auth.users` per bloccare signup (Supabase lo sconsiglia).
+### Trigger del report
 
-## Migrazione DB
-Una sola migrazione: `chat_messages` + GRANT + RLS scoped a `auth.uid()`.
+Modifico la pagina `/mode`:
+- Pulsante "GO LIVE" non più disabled (resta protetto da doppia conferma).
+- Al click: dialogo "Sei sicuro? Verrà generato un report PDF della fase Paper".
+- Conferma → server function `generatePaperReport` che:
+  1. Aggrega da DB i dati paper: equity iniziale/finale, P&L totale, % return, max drawdown, Sharpe approssimato, n. trade, win-rate, best/worst trade, durata media, breakdown per asset, snapshot sentiment medio.
+  2. Genera un PDF brandizzato con `pdf-lib` (logo Bot, tabelle, grafico equity curve come SVG embed).
+  3. Carica il PDF in un nuovo bucket Supabase Storage `reports` (privato, RLS scoped a `user_id`).
+  4. Inserisce una riga in `events_log` con `level=info`, `component=mode`, `message="Report Paper generato — go-live"`, e un nuovo campo `attachment_url` (storage path).
+  5. Aggiorna `settings.mode = 'live'`.
 
-## Dopo l'approvazione (cosa ti chiederò di fare tu)
-1. Disattivare "Allow new users to sign up" dal pannello Supabase Auth (link diretto te lo do io dopo).
-2. Aprire la chat dal bubble o da `/assistente`, dirle "abbassa lo stop loss al 7%" → ricevere la conferma → vedere il parametro aggiornato live nella pagina Rischio + notifica Telegram.
+### Log con allegato
+
+La pagina `/logs` mostrerà, sulle righe con `attachment_url`, un'icona 📎 con bottone **"Scarica PDF"** che genera un signed URL e apre il file.
+
+Il tool dell'assistente `setBotMode('live')` verrà sbloccato e chiamerà la stessa server function, così potrai dirgli "passa a live" e ricevere il report.
+
+## Dettagli tecnici
+
+- **DB migration**: `ALTER TABLE positions/events_log/portfolio_snapshots ADD COLUMN mode text NOT NULL DEFAULT 'paper'`. `events_log` riceve anche `attachment_url text`.
+- **Storage**: bucket `reports` privato + policy `auth.uid() = owner` per select/insert.
+- **PDF**: `pdf-lib` (puro JS, gira nel Worker — niente sharp/canvas).
+- **Equity curve**: SVG generato server-side e disegnato come immagine nel PDF.
+- **Server fn**: `src/lib/reports.functions.ts` (`generatePaperReport`, `getReportDownloadUrl`).
+- **Filtro modalità**: hook `useActiveMode()` che legge `settings.mode` da realtime, poi tutte le query aggiungono `.eq('mode', activeMode)`. Toggle "Archivio Paper" forza `mode='paper'` nelle query.
+
+## Cosa NON faccio (in questo step)
+
+- Non implemento ordini reali su Kraken (la Fase 2 vera richiede chiavi live, sizing ridotto, doppia conferma per ordine — la facciamo dopo, in un piano dedicato).
+- Per ora "GO LIVE" cambia `mode='live'` e genera il PDF, ma il motore di trading continuerà a operare in simulazione finché non colleghiamo l'esecuzione live.
+
+## Cosa dovrai fare tu
+
+Niente nel pannello Supabase — la migration e il bucket li creo io. Dopo l'implementazione: aprire la chat dalla bolla per testare, poi quando vorrai provare il flusso del report, fare click su GO LIVE e scaricare il PDF dai Log.

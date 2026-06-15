@@ -7,18 +7,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUsd, formatPct, pnlClass } from "@/lib/format";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TrendingUp, TrendingDown, Activity, Gauge } from "lucide-react";
+import { useActiveMode } from "@/hooks/use-active-mode";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
 
 function DashboardPage() {
+  const { mode } = useActiveMode();
   const snapshotsQuery = useQuery({
-    queryKey: ["portfolio_snapshots", "recent"],
+    queryKey: ["portfolio_snapshots", "recent", mode],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("portfolio_snapshots")
         .select("ts,total_value,cash_value,positions_value,realized_pnl_day")
+        .eq("mode", mode)
         .order("ts", { ascending: false })
         .limit(500);
       if (error) throw error;
