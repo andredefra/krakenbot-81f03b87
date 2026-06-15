@@ -25,9 +25,19 @@ const CRYPTO_SYMBOLS: Record<string, string> = {
   LTC: "LTCUSD",
 };
 
-// CryptoCompare ticker — usato per estendere lo storico oltre i ~720 giorni che Kraken
-// public OHLC restituisce. API gratuita senza chiave, fino a 2000 candele daily per call.
-const CRYPTOCOMPARE_SYMBOLS: string[] = ["BTC", "ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+// Binance public ticker — usato per estendere lo storico oltre i ~720 giorni che Kraken
+// public OHLC restituisce. API gratuita senza chiave, paginabile via endTime.
+const BINANCE_SYMBOLS: Record<string, string> = {
+  BTC: "BTCUSDT",
+  ETH: "ETHUSDT",
+  SOL: "SOLUSDT",
+  ADA: "ADAUSDT",
+  LINK: "LINKUSDT",
+  AVAX: "AVAXUSDT",
+  DOT: "DOTUSDT",
+  XRP: "XRPUSDT",
+  LTC: "LTCUSDT",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
