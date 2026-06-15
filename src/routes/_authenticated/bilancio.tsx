@@ -39,7 +39,6 @@ import {
   bulkImportInfraCosts,
   getIncomeStatement,
   getTaxSummary,
-  updateTaxSettings,
   syncKrakenFees,
 } from "@/lib/bilancio.functions";
 
@@ -619,123 +618,66 @@ function IncomeStatementSection({ year, mode }: { year: number; mode: "paper" | 
   );
 }
 
-// ============= D) Tax section =============
+// ============= D) Tax section (read-only, fully automatic) =============
 
 function TaxSection({ year }: { year: number }) {
-  const qc = useQueryClient();
   const get = useServerFn(getTaxSummary);
-  const update = useServerFn(updateTaxSettings);
-
-  const settingsQ = useQuery({
-    queryKey: ["settings", "tax"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("settings")
-        .select("tax_country,tax_reserve_cents,loss_carryforward_cents,paper_fee_bps")
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-
   const summaryQ = useQuery({
     queryKey: ["tax_summary", year],
     queryFn: () => get({ data: { year } }),
   });
 
-  const [draft, setDraft] = useState<{ country: string; reserve: string; carry: string; feeBps: string } | null>(null);
-  const current = draft ?? {
-    country: settingsQ.data?.tax_country ?? "IT",
-    reserve: ((settingsQ.data?.tax_reserve_cents ?? 0) / 100).toString(),
-    carry: ((settingsQ.data?.loss_carryforward_cents ?? 0) / 100).toString(),
-    feeBps: String(settingsQ.data?.paper_fee_bps ?? 26),
-  };
-
-  const saveSettings = useMutation({
-    mutationFn: () =>
-      update({
-        data: {
-          tax_country: current.country,
-          tax_reserve_cents: Math.round(Number(current.reserve) * 100),
-          loss_carryforward_cents: Math.round(Number(current.carry) * 100),
-          paper_fee_bps: Number(current.feeBps),
-        },
-      }),
-    onSuccess: () => {
-      toast.success("Impostazioni fiscali aggiornate");
-      qc.invalidateQueries({ queryKey: ["settings"] });
-      qc.invalidateQueries({ queryKey: ["tax_summary"] });
-      setDraft(null);
-    },
-  });
-
-  const isItaly = (summaryQ.data && "country" in summaryQ.data && summaryQ.data.country === "IT" && !("unsupported" in summaryQ.data));
+  const isItaly =
+    summaryQ.data &&
+    "country" in summaryQ.data &&
+    summaryQ.data.country === "IT" &&
+    !("unsupported" in summaryQ.data);
   const summary = isItaly ? (summaryQ.data as any) : null;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Tasse</CardTitle>
+        <CardTitle>Tasse · Automatico</CardTitle>
         <CardDescription>
-          Calcolo basato sul paese di residenza fiscale. Default: Italia — imposta sostitutiva 26% sulle plusvalenze crypto.
+          Italia — imposta sostitutiva 26% sulle plusvalenze crypto. Riserva accantonata
+          automaticamente ad ogni trade Live in profitto. Promemoria scadenze inviati su Telegram a
+          T-30, T-7, T-1 giorni.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div>
-            <Label className="text-xs">Paese</Label>
-            <Select value={current.country} onValueChange={(v) => setDraft({ ...current, country: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="IT">🇮🇹 Italia</SelectItem>
-                <SelectItem value="PT" disabled>🇵🇹 Portogallo (non ancora supportato)</SelectItem>
-                <SelectItem value="DE" disabled>🇩🇪 Germania (non ancora supportato)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Minusvalenze riportate (€)</Label>
-            <Input value={current.carry} onChange={(e) => setDraft({ ...current, carry: e.target.value })} />
-          </div>
-          <div>
-            <Label className="text-xs">Accantonato per tasse (€)</Label>
-            <Input value={current.reserve} onChange={(e) => setDraft({ ...current, reserve: e.target.value })} />
-          </div>
-          <div>
-            <Label className="text-xs">Fee paper (bps)</Label>
-            <Input value={current.feeBps} onChange={(e) => setDraft({ ...current, feeBps: e.target.value })} />
-          </div>
-        </div>
-        {draft && (
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending}>Salva</Button>
-            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>Annulla</Button>
-          </div>
-        )}
-
         {summaryQ.isLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : !isItaly ? (
           <div className="text-sm text-muted-foreground p-4 border border-dashed rounded">
-            Regole fiscali per <strong>{(summaryQ.data as any)?.country}</strong> non ancora implementate.
-            Quando ti trasferirai, le aggiungeremo qui.
+            Regole fiscali per <strong>{(summaryQ.data as any)?.country}</strong> non ancora
+            implementate. Quando ti trasferirai, le aggiungeremo qui.
           </div>
         ) : summary && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Kpi label="Plusvalenza imponibile" value={eur(summary.realizedGainCents)} />
-              <Kpi label="Base imponibile netta" value={eur(summary.taxableBaseCents)} />
+              <Kpi label="Plusvalenze YTD (Live)" value={eur(summary.realizedGainCents)} />
+              <Kpi label="Minusvalenze riportate" value={eur(summary.lossCarryforwardCents)} />
+              <Kpi label="Base imponibile" value={eur(summary.taxableBaseCents)} />
               <Kpi label="Imposta 26%" value={eur(summary.taxDueCents)} />
-              <Kpi label="Accantonato" value={eur(summary.reservedCents)} />
             </div>
 
-            {summary.taxDueCents > 0 && (
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Copertura accantonamento</span>
-                  <span className="tabular-nums">{(summary.reserveCoverageBps / 100).toFixed(0)}%</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Kpi label="Riserva accantonata (auto)" value={eur(summary.reservedCents)} />
+              <div className="p-3 rounded-lg border border-border bg-card/50">
+                <div className="text-xs text-muted-foreground">Copertura riserva</div>
+                <div className="flex items-center gap-3 mt-1">
+                  <Progress value={summary.reserveCoverageBps / 100} className="flex-1" />
+                  <span className="tabular-nums text-sm font-medium">
+                    {(summary.reserveCoverageBps / 100).toFixed(0)}%
+                  </span>
                 </div>
-                <Progress value={summary.reserveCoverageBps / 100} />
+              </div>
+            </div>
+
+            {summary.realizedGainCents === 0 && summary.lossCarryforwardCents === 0 && (
+              <div className="text-xs text-muted-foreground p-3 rounded border border-border/50 bg-muted/20">
+                Nessun trade Live ancora chiuso. Parti da zero — il sistema accantonerà
+                automaticamente il 26% di ogni futura plusvalenza realizzata.
               </div>
             )}
 
@@ -744,15 +686,27 @@ function TaxSection({ year }: { year: number }) {
                 <CalendarClock className="size-4" /> Scadenze fiscali Italia
               </h3>
               {summary.nextDeadline && (
-                <div className={`mb-3 p-3 rounded-lg border ${summary.nextDeadline.daysLeft <= 30 ? "border-[color:var(--live,#ef4444)]/40 bg-[color:var(--live,#ef4444)]/5" : "border-border bg-muted/30"}`}>
+                <div
+                  className={`mb-3 p-3 rounded-lg border ${
+                    summary.nextDeadline.daysLeft <= 30
+                      ? "border-[color:var(--live,#ef4444)]/40 bg-[color:var(--live,#ef4444)]/5"
+                      : "border-border bg-muted/30"
+                  }`}
+                >
                   <div className="flex items-start gap-2">
                     <AlertCircle className="size-4 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <div className="font-medium text-sm">Prossima: {summary.nextDeadline.label}</div>
-                      <div className="text-xs text-muted-foreground">{summary.nextDeadline.description}</div>
+                      <div className="font-medium text-sm">
+                        Prossima: {summary.nextDeadline.label}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {summary.nextDeadline.description}
+                      </div>
                       <div className="text-xs mt-1">
                         <Badge variant="outline">{summary.nextDeadline.date}</Badge>
-                        <span className="ml-2 tabular-nums">{summary.nextDeadline.daysLeft} giorni</span>
+                        <span className="ml-2 tabular-nums">
+                          {summary.nextDeadline.daysLeft} giorni
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -760,19 +714,26 @@ function TaxSection({ year }: { year: number }) {
               )}
               <div className="space-y-2">
                 {summary.deadlines.slice(0, 6).map((d: any) => (
-                  <div key={d.id} className="flex items-start justify-between gap-3 text-sm py-2 border-b border-border/50 last:border-0">
+                  <div
+                    key={d.id}
+                    className="flex items-start justify-between gap-3 text-sm py-2 border-b border-border/50 last:border-0"
+                  >
                     <div>
                       <div className="font-medium">{d.label}</div>
                       <div className="text-xs text-muted-foreground">{d.description}</div>
                     </div>
-                    <Badge variant="outline" className="font-mono text-xs shrink-0">{d.date}</Badge>
+                    <Badge variant="outline" className="font-mono text-xs shrink-0">
+                      {d.date}
+                    </Badge>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border/50">
-              {summary.notes.map((n: string, i: number) => <div key={i}>• {n}</div>)}
+              {summary.notes.map((n: string, i: number) => (
+                <div key={i}>• {n}</div>
+              ))}
             </div>
           </>
         )}

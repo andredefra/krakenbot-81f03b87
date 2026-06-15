@@ -68,24 +68,10 @@ export const bulkImportInfraCosts = createServerFn({ method: "POST" })
 
 // ============= Tax settings =============
 
-const taxSettingsInput = z.object({
-  tax_country: z.string().min(2).max(2),
-  tax_reserve_cents: z.number().int().min(0),
-  loss_carryforward_cents: z.number().int().min(0),
-  paper_fee_bps: z.number().int().min(0).max(1000),
-});
-
-export const updateTaxSettings = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => taxSettingsInput.parse(d))
-  .handler(async ({ data, context }) => {
-    const { error } = await context.supabase
-      .from("settings")
-      .update(data)
-      .eq("user_id", context.userId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+// ============= Tax settings =============
+// Tax settings are fully automatic in v2: country fixed to IT, reserve accrued
+// by DB trigger on Live position close, loss carryforward auto-updated on losses.
+// No manual update endpoint is exposed.
 
 // ============= Income statement & tax summary =============
 
