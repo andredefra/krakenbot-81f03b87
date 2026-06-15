@@ -79,9 +79,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Crypto Bot — Cruscotto" },
+      { title: "kraken bot" },
       { name: "description", content: "Cruscotto personale per il bot di trading crypto su Kraken." },
       { name: "robots", content: "noindex,nofollow" },
+      { property: "og:title", content: "kraken bot" },
+      { name: "twitter:title", content: "kraken bot" },
+      { property: "og:description", content: "Cruscotto personale per il bot di trading crypto su Kraken." },
+      { name: "twitter:description", content: "Cruscotto personale per il bot di trading crypto su Kraken." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fc2912cd-d69f-404d-8fbf-4151b10f9ed4/id-preview-1a4c9ac9--83246337-7089-4f55-8513-1c18d291c310.lovable.app-1781521980480.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fc2912cd-d69f-404d-8fbf-4151b10f9ed4/id-preview-1a4c9ac9--83246337-7089-4f55-8513-1c18d291c310.lovable.app-1781521980480.png" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { property: "og:type", content: "website" },
     ],
     links: [
       {
