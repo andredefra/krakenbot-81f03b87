@@ -66,21 +66,29 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const tradedSyms = data.universe === "core" ? CORE_ASSETS : [...CORE_ASSETS, ...SLEEVE_ASSETS];
     const allSyms = ["BTC", "SPX", ...tradedSyms];
 
-    const { data: ohlc, error: oerr } = await supabase
-      .from("historical_ohlc")
-      .select("symbol,date,close")
-      .in("symbol", allSyms)
-      .gte("date", sinceStr)
-      .order("date", { ascending: true })
-      .range(0, 49999);
-    if (oerr) throw new Error(oerr.message);
-    if (!ohlc || ohlc.length === 0) {
-      throw new Error("Storico non ancora popolato. Esegui historical-sync prima.");
-    }
-
+    // Fetch per-symbol to bypass PostgREST max-rows cap (a single .in() query
+    // sorted by date returns the oldest rows first — SPX dominates and BTC/alts get truncated).
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
-    for (const r of ohlc) {
-      (bySym[r.symbol] ??= []).push({ date: r.date as string, close: Number(r.close) });
+    const ohlcResults = await Promise.all(
+      allSyms.map((sym) =>
+        supabase
+          .from("historical_ohlc")
+          .select("date,close")
+          .eq("symbol", sym)
+          .gte("date", sinceStr)
+          .order("date", { ascending: true })
+          .range(0, 9999),
+      ),
+    );
+    for (let i = 0; i < allSyms.length; i++) {
+      const res = ohlcResults[i];
+      if (res.error) throw new Error(res.error.message);
+      if (res.data && res.data.length) {
+        bySym[allSyms[i]] = res.data.map((r) => ({ date: r.date as string, close: Number(r.close) }));
+      }
+    }
+    if (Object.keys(bySym).length === 0) {
+      throw new Error("Storico non ancora popolato. Esegui historical-sync prima.");
     }
     if (!bySym["BTC"] || bySym["BTC"].length < 60) {
       throw new Error("Storico BTC insufficiente (servono almeno 60 candele).");
