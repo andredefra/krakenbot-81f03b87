@@ -71,7 +71,8 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       .select("symbol,date,close")
       .in("symbol", allSyms)
       .gte("date", sinceStr)
-      .order("date", { ascending: true });
+      .order("date", { ascending: true })
+      .range(0, 49999);
     if (oerr) throw new Error(oerr.message);
     if (!ohlc || ohlc.length === 0) {
       throw new Error("Storico non ancora popolato. Esegui historical-sync prima.");
@@ -89,7 +90,8 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       .from("fg_history")
       .select("date,value")
       .gte("date", sinceStr)
-      .order("date", { ascending: true });
+      .order("date", { ascending: true })
+      .range(0, 9999);
     const fg = (fgRows.data ?? []).map((r) => ({ date: r.date as string, value: r.value }));
 
     const assets: Record<string, Array<{ date: string; close: number }>> = {};
