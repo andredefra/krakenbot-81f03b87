@@ -30,8 +30,8 @@ export type BacktestPayload = {
 const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
-function hashInput(input: { preset: string; years: number; universe: string }): string {
-  return `${input.preset}|${input.years}y|${input.universe}`;
+function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
+  return `${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
 }
 
 export const runBacktestFn = createServerFn({ method: "POST" })
