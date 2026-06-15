@@ -13,8 +13,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { AlertTriangle, FileText } from "lucide-react";
+import { AlertTriangle, FileText, Send } from "lucide-react";
 import { generatePaperGoLiveReport } from "@/lib/reports.functions";
+import { sendTelegramTest } from "@/lib/telegram.functions";
 
 export const Route = createFileRoute("/_authenticated/mode")({
   component: ModePage,
@@ -24,6 +25,15 @@ function ModePage() {
   const qc = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const generate = useServerFn(generatePaperGoLiveReport);
+  const telegramTest = useServerFn(sendTelegramTest);
+  const tgMut = useMutation({
+    mutationFn: () => telegramTest(),
+    onSuccess: (r) => {
+      if (r.ok) toast.success("✅ Messaggio Telegram inviato — controlla la chat");
+      else toast.error(`❌ Telegram: ${r.error}`);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Errore"),
+  });
 
   const q = useQuery({
     queryKey: ["settings", "mode"],
@@ -143,6 +153,19 @@ function ModePage() {
               <FileText className="size-5 text-muted-foreground" />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifiche Telegram</CardTitle>
+          <CardDescription>Verifica che il bot consegni messaggi sul tuo chat ID.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => tgMut.mutate()} disabled={tgMut.isPending}>
+            <Send className="size-4" />
+            {tgMut.isPending ? "Invio in corso…" : "Invia messaggio di test"}
+          </Button>
         </CardContent>
       </Card>
 

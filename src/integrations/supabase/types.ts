@@ -77,6 +77,78 @@ export type Database = {
         }
         Relationships: []
       }
+      fx_rates: {
+        Row: {
+          base: string
+          created_at: string
+          id: string
+          quote: string
+          rate: number
+          rate_date: string
+        }
+        Insert: {
+          base: string
+          created_at?: string
+          id?: string
+          quote: string
+          rate: number
+          rate_date: string
+        }
+        Update: {
+          base?: string
+          created_at?: string
+          id?: string
+          quote?: string
+          rate?: number
+          rate_date?: string
+        }
+        Relationships: []
+      }
+      infra_costs: {
+        Row: {
+          amount_cents: number
+          category: string
+          created_at: string
+          currency: string
+          end_date: string | null
+          id: string
+          name: string
+          notes: string | null
+          recurrence: string
+          start_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          category?: string
+          created_at?: string
+          currency?: string
+          end_date?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          recurrence?: string
+          start_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          category?: string
+          created_at?: string
+          currency?: string
+          end_date?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          recurrence?: string
+          start_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       portfolio_snapshots: {
         Row: {
           cash_value: number
@@ -234,13 +306,17 @@ export type Database = {
           id: string
           is_running: boolean
           kill_switch_floor: number
+          loss_carryforward_cents: number
           max_position_pct: number
           max_positions: number
           min_target_pct: number
           mode: Database["public"]["Enums"]["trade_mode"]
+          paper_fee_bps: number
           sentiment_weights: Json
           stop_loss_pct: number
           take_profit_pct: number
+          tax_country: string
+          tax_reserve_cents: number
           timeframe: string
           trailing_activate_pct: number
           trailing_gap_pct: number
@@ -256,13 +332,17 @@ export type Database = {
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
+          loss_carryforward_cents?: number
           max_position_pct?: number
           max_positions?: number
           min_target_pct?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
+          paper_fee_bps?: number
           sentiment_weights?: Json
           stop_loss_pct?: number
           take_profit_pct?: number
+          tax_country?: string
+          tax_reserve_cents?: number
           timeframe?: string
           trailing_activate_pct?: number
           trailing_gap_pct?: number
@@ -278,13 +358,17 @@ export type Database = {
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
+          loss_carryforward_cents?: number
           max_position_pct?: number
           max_positions?: number
           min_target_pct?: number
           mode?: Database["public"]["Enums"]["trade_mode"]
+          paper_fee_bps?: number
           sentiment_weights?: Json
           stop_loss_pct?: number
           take_profit_pct?: number
+          tax_country?: string
+          tax_reserve_cents?: number
           timeframe?: string
           trailing_activate_pct?: number
           trailing_gap_pct?: number
@@ -292,6 +376,59 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      trade_fees: {
+        Row: {
+          cost: number | null
+          created_at: string
+          currency: string
+          fee_cents: number
+          id: string
+          kraken_trade_id: string
+          pair: string | null
+          position_id: string | null
+          raw: Json | null
+          traded_at: string
+          user_id: string
+          volume: number | null
+        }
+        Insert: {
+          cost?: number | null
+          created_at?: string
+          currency?: string
+          fee_cents: number
+          id?: string
+          kraken_trade_id: string
+          pair?: string | null
+          position_id?: string | null
+          raw?: Json | null
+          traded_at: string
+          user_id: string
+          volume?: number | null
+        }
+        Update: {
+          cost?: number | null
+          created_at?: string
+          currency?: string
+          fee_cents?: number
+          id?: string
+          kraken_trade_id?: string
+          pair?: string | null
+          position_id?: string | null
+          raw?: Json | null
+          traded_at?: string
+          user_id?: string
+          volume?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_fees_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
