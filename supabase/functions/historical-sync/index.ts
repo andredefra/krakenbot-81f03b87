@@ -51,21 +51,21 @@ Deno.serve(async (req) => {
   const report: Record<string, unknown> = {};
   try {
 
-    // 1b. Storico esteso (~5 anni) via CryptoCompare — fatto PRIMA di Kraken così Kraken
-    // sovrascrive l'overlap con OHLC completo. CryptoCompare = free, no key, 2000 candele/call.
-    for (const sym of CRYPTOCOMPARE_SYMBOLS) {
+    // 1b. Storico esteso (~5 anni) via Binance — fatto PRIMA di Kraken così Kraken
+    // sovrascrive l'overlap. Binance = free, no key, paginazione via endTime.
+    for (const [sym, pair] of Object.entries(BINANCE_SYMBOLS)) {
       try {
-        const rows = await fetchCryptoCompareDailyHistory(sym, 5);
+        const rows = await fetchBinanceDailyHistory(pair, 5);
         if (rows.length) {
-          await upsertOhlc(supa, sym, "cryptocompare", rows);
-          report[`${sym}_cc`] = rows.length;
+          await upsertOhlc(supa, sym, "binance", rows);
+          report[`${sym}_bn`] = rows.length;
         }
       } catch (e) {
-        report[`${sym}_cc_error`] = String(e);
+        report[`${sym}_bn_error`] = String(e);
       }
     }
 
-    // 1. Crypto via Kraken — ~720 giorni con OHLC completo, sovrascrive cryptocompare per il recente
+    // 1. Crypto via Kraken — ~720 giorni con OHLC completo, sovrascrive binance per il recente
     for (const [sym, pair] of Object.entries(CRYPTO_SYMBOLS)) {
       try {
         const rows = await fetchKrakenDailyHistory(pair, 5);
