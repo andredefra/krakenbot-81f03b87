@@ -1,0 +1,344 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { Shield, Scale, Flame, Settings as SettingsIcon, TrendingUp, RefreshCw } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from "recharts";
+import { PRESETS, type PresetId, type StrategyPreset } from "@/lib/strategy-presets";
+import { applyStrategyPreset } from "@/lib/strategy.functions";
+import { runBacktestFn } from "@/lib/backtest.functions";
+
+export const Route = createFileRoute("/_authenticated/strategia")({
+  component: StrategiaPage,
+});
+
+const ICONS: Record<PresetId, typeof Shield> = {
+  conservative: Shield,
+  balanced: Scale,
+  aggressive: Flame,
+  custom: SettingsIcon,
+};
+
+function StrategiaPage() {
+  const qc = useQueryClient();
+  const settingsQ = useQuery({
+    queryKey: ["settings", "strategy"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("settings").select("*").maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const apply = useServerFn(applyStrategyPreset);
+  const applyMut = useMutation({
+    mutationFn: (preset: PresetId) => apply({ data: { preset: preset as "conservative" | "balanced" | "aggressive" } }),
+    onSuccess: () => {
+      toast.success("Preset applicato — parametri rischio aggiornati");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Errore"),
+  });
+
+  const [pending, setPending] = useState<PresetId | null>(null);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Strategia</h1>
+        <p className="text-sm text-muted-foreground">
+          Cambia approccio al rischio con un click — i parametri della pagina Rischio vengono riscritti automaticamente.
+          <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop originali. Solo i nuovi useranno il preset.</span>
+        </p>
+      </div>
+
+      {/* Preset cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {PRESETS.filter((p) => p.id !== "custom").map((p) => (
+          <PresetCard
+            key={p.id}
+            preset={p}
+            current={settingsQ.data?.strategy_preset === p.id}
+            onApply={() => setPending(p.id)}
+          />
+        ))}
+      </div>
+
+      {/* Custom indicator */}
+      {settingsQ.data?.strategy_preset === "custom" && (
+        <Card className="border-amber-500/40">
+          <CardContent className="py-4 flex items-center justify-between">
+            <div>
+              <div className="font-medium">Stai usando parametri custom</div>
+              <div className="text-xs text-muted-foreground">Hai modificato i valori a mano dalla pagina Rischio</div>
+            </div>
+            <Badge variant="outline">Custom</Badge>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Backtest section */}
+      <BacktestSection />
+
+      {/* Confirm dialog */}
+      <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Applicare preset {pending && PRESETS.find((p) => p.id === pending)?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pending && settingsQ.data && <DiffTable current={settingsQ.data} preset={PRESETS.find((p) => p.id === pending)!} />}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pending) {
+                  applyMut.mutate(pending);
+                  setPending(null);
+                }
+              }}
+            >
+              Applica
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; current: boolean; onApply: () => void }) {
+  const Icon = ICONS[preset.id];
+  const v = preset.values!;
+  return (
+    <Card className={current ? "border-primary" : ""}>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <Icon className="size-6 text-primary" />
+          {current && <Badge>Attuale</Badge>}
+        </div>
+        <CardTitle className="mt-2">{preset.name}</CardTitle>
+        <CardDescription>{preset.tagline}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <Stat label="Max pos" value={v.max_positions.toString()} />
+          <Stat label="Size max" value={`${v.max_position_pct}%`} />
+          <Stat label="Stop loss" value={`−${v.stop_loss_pct}%`} />
+          <Stat label="Take profit" value={`+${v.take_profit_pct}%`} />
+          <Stat label="Daily limit" value={`−${v.daily_loss_limit_pct}%`} />
+          <Stat label="F&G cap" value={v.fg_greed_cap.toString()} />
+        </div>
+        <div className="flex gap-2 text-xs">
+          <Badge variant="outline">Rischio {preset.risk}</Badge>
+          <Badge variant="outline">Varianza {preset.variance}</Badge>
+        </div>
+        <Button onClick={onApply} disabled={current} className="w-full" variant={current ? "outline" : "default"}>
+          {current ? "Già attivo" : "Applica preset"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between border-b border-border/40 py-1">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function DiffTable({ current, preset }: { current: Record<string, unknown>; preset: StrategyPreset }) {
+  const v = preset.values!;
+  const rows: Array<{ label: string; key: keyof typeof v; suffix?: string }> = [
+    { label: "Max posizioni", key: "max_positions" },
+    { label: "Size max", key: "max_position_pct", suffix: "%" },
+    { label: "Stop loss", key: "stop_loss_pct", suffix: "%" },
+    { label: "Trailing att.", key: "trailing_activate_pct", suffix: "%" },
+    { label: "Trailing gap", key: "trailing_gap_pct", suffix: "%" },
+    { label: "Take profit", key: "take_profit_pct", suffix: "%" },
+    { label: "Daily loss", key: "daily_loss_limit_pct", suffix: "%" },
+    { label: "F&G cap", key: "fg_greed_cap" },
+    { label: "Filtro regime", key: "regime_filter" },
+  ];
+  return (
+    <div className="mt-3 border border-border rounded-md overflow-hidden">
+      <table className="w-full text-xs">
+        <thead className="bg-muted/30">
+          <tr><th className="text-left px-3 py-2">Parametro</th><th className="text-right px-3 py-2">Attuale</th><th className="text-right px-3 py-2">Nuovo</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const cur = current[r.key];
+            const next = v[r.key];
+            const changed = String(cur) !== String(next);
+            return (
+              <tr key={r.key as string} className={`border-t border-border/40 ${changed ? "bg-primary/5" : ""}`}>
+                <td className="px-3 py-1.5">{r.label}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{String(cur ?? "—")}{r.suffix ?? ""}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums font-medium">{String(next)}{r.suffix ?? ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============ Backtest section ============
+
+function BacktestSection() {
+  const [preset, setPreset] = useState<"conservative" | "balanced" | "aggressive">("balanced");
+  const [years, setYears] = useState<1 | 3 | 5>(3);
+  const [universe, setUniverse] = useState<"core" | "core_sleeve">("core_sleeve");
+
+  const run = useServerFn(runBacktestFn);
+  const runMut = useMutation({
+    mutationFn: () => run({ data: { preset, years, universe } }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Errore backtest"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
+            <CardDescription>Come avrebbe performato la strategia negli anni scorsi vs BTC e S&P 500</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Preset</label>
+            <Select value={preset} onValueChange={(v) => setPreset(v as typeof preset)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="conservative">Conservativo</SelectItem>
+                <SelectItem value="balanced">Bilanciato</SelectItem>
+                <SelectItem value="aggressive">Aggressivo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Periodo</label>
+            <Select value={String(years)} onValueChange={(v) => setYears(parseInt(v) as 1 | 3 | 5)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 anno</SelectItem>
+                <SelectItem value="3">3 anni</SelectItem>
+                <SelectItem value="5">5 anni</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Universo</label>
+            <Select value={universe} onValueChange={(v) => setUniverse(v as typeof universe)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="core">Solo Core (ETH, SOL)</SelectItem>
+                <SelectItem value="core_sleeve">Core + Sleeve momentum</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button onClick={() => runMut.mutate()} disabled={runMut.isPending} className="w-full">
+              <RefreshCw className={`size-4 ${runMut.isPending ? "animate-spin" : ""}`} />
+              {runMut.isPending ? "Calcolo…" : "Esegui backtest"}
+            </Button>
+          </div>
+        </div>
+
+        {runMut.isPending && <Skeleton className="h-80 w-full" />}
+
+        {runMut.data && (
+          <>
+            <div className="h-80 bg-card/50 rounded-md p-2 border border-border">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={runMut.data.equity as Array<{ date: string; strategy: number; btc: number; spx: number }>}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={50} />
+                  <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
+                  <Tooltip
+                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                    formatter={(v: number) => v.toLocaleString("it-IT", { maximumFractionDigits: 0 })}
+                  />
+                  <Legend />
+                  <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia" />
+                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" />
+                  <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
+              <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
+              <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
+            </div>
+
+            {runMut.data.cached && (
+              <p className="text-xs text-muted-foreground">📦 Risultato dalla cache (valido 24h)</p>
+            )}
+          </>
+        )}
+
+        {!runMut.data && !runMut.isPending && (
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+              Premi "Esegui backtest" per simulare il preset sui dati storici.
+              <br />
+              <span className="text-xs">Richiede che lo storico OHLC sia stato popolato (esegui prima la funzione <code>historical-sync</code>).</span>
+            </CardContent>
+          </Card>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
+
+function KpiCard({ title, kpis, highlight }: { title: string; kpis: KpisShape; highlight?: boolean }) {
+  return (
+    <Card className={highlight ? "border-primary/50" : ""}>
+      <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-1 text-xs">
+        <Row label="Rendimento" value={`${kpis.totalReturnPct >= 0 ? "+" : ""}${kpis.totalReturnPct.toFixed(1)}%`} positive={kpis.totalReturnPct >= 0} />
+        <Row label="CAGR" value={`${kpis.cagr >= 0 ? "+" : ""}${kpis.cagr.toFixed(1)}%`} />
+        <Row label="Max DD" value={`${kpis.maxDrawdownPct.toFixed(1)}%`} negative />
+        <Row label="Sharpe" value={kpis.sharpe.toFixed(2)} />
+        {kpis.trades > 1 && <Row label="# Trade" value={kpis.trades.toString()} />}
+        {kpis.trades > 1 && <Row label="Win rate" value={`${kpis.winRatePct.toFixed(0)}%`} />}
+        {kpis.trades > 1 && <Row label="Profit factor" value={kpis.profitFactor.toFixed(2)} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Row({ label, value, positive, negative }: { label: string; value: string; positive?: boolean; negative?: boolean }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-medium tabular-nums ${positive ? "text-green-500" : negative ? "text-red-500" : ""}`}>{value}</span>
+    </div>
+  );
+}

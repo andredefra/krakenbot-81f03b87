@@ -17,6 +17,8 @@ import {
   Bot,
   MessageCircle,
   Calculator,
+  Stethoscope,
+  Target,
   LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +39,9 @@ const NAV = [
   { to: "/positions", label: "Posizioni aperte", icon: LineChart },
   { to: "/history", label: "Storico trade", icon: History },
   { to: "/bilancio", label: "Bilancio", icon: Calculator },
+  { to: "/strategia", label: "Strategia", icon: Target },
   { to: "/settings", label: "Rischio", icon: SettingsIcon },
+  { to: "/diagnostica", label: "Diagnostica", icon: Stethoscope },
   { to: "/sentiment", label: "Sentiment", icon: Activity },
   { to: "/mode", label: "Modalità", icon: Power },
   { to: "/logs", label: "Log", icon: ScrollText },

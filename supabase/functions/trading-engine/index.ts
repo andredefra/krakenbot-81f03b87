@@ -77,6 +77,9 @@ type Settings = {
   enabled_sentiment_sources: Record<string, boolean>;
   sentiment_weights: Record<string, number>;
   asset_universe: { core?: string[]; momentum?: string[]; regime?: string[] };
+  regime_filter?: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
+  fg_greed_cap?: number;
+  strategy_preset?: string;
 };
 
 type Position = {
@@ -221,14 +224,32 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     }
   }
 
-  // 8. Regime: BTC > SMA50 daily + F&G non extreme greed → risk-on
-  const btcCloses = await fetchKrakenDailyCloses("BTC", 60);
-  const sma50 = sma(btcCloses, 50);
+  // 8. Regime: configurabile (btc_sma50 / btc_sma200 / fg_only / off) + cap F&G
+  const regimeFilter = settings.regime_filter ?? "btc_sma50";
+  const fgGreedCap = settings.fg_greed_cap ?? 75;
+  const smaLen = regimeFilter === "btc_sma200" ? 200 : 50;
+  const btcCloses = await fetchKrakenDailyCloses("BTC", Math.max(smaLen + 10, 60));
+  const smaRef = sma(btcCloses, smaLen);
   const btcLast = prices["BTC"] ?? btcCloses[btcCloses.length - 1];
   const fg = await fetchFearGreed();
-  const btcUptrend = sma50 != null && btcLast > sma50;
-  const fgGreedExtreme = fg ? fg.value > 75 : false;
-  const riskOn = btcUptrend && !fgGreedExtreme;
+  const btcUptrend = smaRef != null && btcLast > smaRef;
+  const fgGreedExtreme = fg ? fg.value > fgGreedCap : false;
+
+  let regimeOk = true;
+  let regimeReason = "";
+  if (regimeFilter === "btc_sma50" || regimeFilter === "btc_sma200") {
+    regimeOk = btcUptrend && !fgGreedExtreme;
+    if (!btcUptrend) regimeReason = `BTC ${btcLast.toFixed(0)} sotto SMA${smaLen} ${smaRef?.toFixed(0) ?? "?"} → risk-off`;
+    else if (fgGreedExtreme) regimeReason = `F&G ${fg?.value} > ${fgGreedCap} (Extreme Greed) → risk-off`;
+    else regimeReason = `BTC sopra SMA${smaLen}, F&G ${fg?.value ?? "?"} → risk-on`;
+  } else if (regimeFilter === "fg_only") {
+    regimeOk = !fgGreedExtreme;
+    regimeReason = fgGreedExtreme ? `F&G ${fg?.value} > ${fgGreedCap} → risk-off` : `Solo filtro F&G: ${fg?.value ?? "?"} → risk-on`;
+  } else {
+    regimeOk = true;
+    regimeReason = "Filtro regime disattivato";
+  }
+  const riskOn = regimeOk;
 
   if (fg) {
     await supa.from("sentiment_snapshots").insert({
@@ -244,20 +265,27 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     source: "regime",
     scope: "market",
     score: riskOn ? 1 : 0,
-    raw: { label: riskOn ? "risk-on" : "risk-off", btc_last: btcLast, btc_sma50: sma50, fg: fg?.value ?? null },
+    raw: { label: riskOn ? "risk-on" : "risk-off", btc_last: btcLast, btc_sma_ref: smaRef, filter: regimeFilter, fg: fg?.value ?? null },
   });
 
   // 9. Stub ingressi: regola tecnica base
   // Aprire solo se: risk-on, posizioni < max, limite giorno non superato.
   const dailyLossUsd = (settings.daily_loss_limit_pct / 100) * (cash + positionsValue);
   const dailyLossExceeded = -realizedToday >= dailyLossUsd;
-  const stillOpenCount = (await supa.from("positions").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "open")).count ?? 0;
+  let stillOpenCount = (await supa.from("positions").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "open")).count ?? 0;
+
+  // Track candidates for diagnostics
+  const candidates: Array<Record<string, unknown>> = [];
+  const candidateAssets = uniq([...(settings.asset_universe.core ?? []), ...(settings.asset_universe.momentum ?? [])]).filter((a) => a !== "BTC");
 
   if (riskOn && stillOpenCount < settings.max_positions && !dailyLossExceeded) {
-    const candidates = uniq([...(settings.asset_universe.core ?? []), ...(settings.asset_universe.momentum ?? [])]).filter((a) => a !== "BTC");
-    for (const asset of candidates) {
-      if (stillOpenCount + 1 > settings.max_positions) break;
-      // Skip se già aperta
+    for (const asset of candidateAssets) {
+      const baseRow: Record<string, unknown> = { asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false };
+      if (stillOpenCount + 1 > settings.max_positions) {
+        baseRow.reasonSkipped = "Max posizioni raggiunto";
+        candidates.push(baseRow);
+        continue;
+      }
       const { data: alreadyOpen } = await supa
         .from("positions")
         .select("id")
@@ -265,27 +293,45 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
         .eq("asset", asset)
         .eq("status", "open")
         .maybeSingle();
-      if (alreadyOpen) continue;
-
+      if (alreadyOpen) {
+        baseRow.alreadyOpen = true;
+        baseRow.reasonSkipped = "Posizione già aperta";
+        candidates.push(baseRow);
+        continue;
+      }
       const price = prices[asset];
-      if (!price) continue;
-
-      // Regola tecnica STUB: SMA20 > SMA50 su daily come proxy di trend
+      if (!price) {
+        baseRow.reasonSkipped = "Prezzo non disponibile";
+        candidates.push(baseRow);
+        continue;
+      }
       const closes = await fetchKrakenDailyCloses(asset, 60);
       const s20 = sma(closes, 20);
       const s50 = sma(closes, 50);
-      if (!s20 || !s50 || !(s20 > s50)) continue;
-
+      baseRow.sma20 = s20;
+      baseRow.sma50 = s50;
+      baseRow.trendOk = !!(s20 && s50 && s20 > s50);
+      if (!s20 || !s50 || !(s20 > s50)) {
+        baseRow.reasonSkipped = `Trend SMA20 ≤ SMA50 (${s20?.toFixed(2) ?? "?"} vs ${s50?.toFixed(2) ?? "?"})`;
+        candidates.push(baseRow);
+        continue;
+      }
       const sizeUsd = (settings.max_position_pct / 100) * portfolioTotal;
       const MIN_ORDER_USD = 5;
-      if (sizeUsd < MIN_ORDER_USD) continue;
-      if (sizeUsd > cash * 0.99) continue;
-
+      if (sizeUsd < MIN_ORDER_USD) {
+        baseRow.reasonSkipped = `Size ${sizeUsd.toFixed(2)} USD sotto minimo ordine`;
+        candidates.push(baseRow);
+        continue;
+      }
+      if (sizeUsd > cash * 0.99) {
+        baseRow.reasonSkipped = `Cash insufficiente (size ${sizeUsd.toFixed(2)} > cash ${cash.toFixed(2)})`;
+        candidates.push(baseRow);
+        continue;
+      }
       const qty = sizeUsd / price;
       const stop = price * (1 - settings.stop_loss_pct / 100);
       const reason = "SMA20>SMA50 daily, risk-on";
-
-      const { data: inserted, error: ierr } = await supa
+      const { error: ierr } = await supa
         .from("positions")
         .insert({
           user_id: userId,
@@ -299,14 +345,16 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
           stop_price: stop,
           trailing_high: null,
           open_reason: reason,
-        })
-        .select()
-        .single();
+        });
       if (ierr) {
         await log(supa, userId, "error", "trading-engine", `Open ${asset} failed: ${ierr.message}`);
+        baseRow.reasonSkipped = `Errore insert: ${ierr.message}`;
+        candidates.push(baseRow);
         continue;
       }
-
+      baseRow.opened = true;
+      candidates.push(baseRow);
+      stillOpenCount += 1;
       await log(supa, userId, "info", "trading-engine", `Aperta ${asset} a ${price.toFixed(4)} size ${sizeUsd.toFixed(2)}`);
       await sendTelegram(
         fmtOpen({
@@ -320,11 +368,32 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
           portfolioTotal,
         }),
       );
-
-      // Aggiorna contatori locali per il prossimo ciclo iterativo
-      void inserted;
+    }
+  } else {
+    // Risk-off o limiti raggiunti: aggiungi i candidati comunque per diagnostica con motivo
+    let blockReason = "";
+    if (!riskOn) blockReason = regimeReason;
+    else if (dailyLossExceeded) blockReason = `Limite perdita giornaliero superato (${realizedToday.toFixed(2)} USD)`;
+    else blockReason = `Max posizioni raggiunto (${stillOpenCount}/${settings.max_positions})`;
+    for (const asset of candidateAssets) {
+      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: blockReason });
     }
   }
+
+  // Write diagnostics snapshot
+  await supa.from("engine_diagnostics").upsert({
+    user_id: userId,
+    cycle_at: new Date().toISOString(),
+    regime: riskOn ? "risk-on" : "risk-off",
+    regime_reason: regimeReason,
+    btc_last: btcLast,
+    btc_sma50: smaRef,
+    fg_value: fg?.value ?? null,
+    fg_label: fg?.label ?? null,
+    candidates,
+    notes: dailyLossExceeded ? "Limite perdita giornaliero superato" : null,
+    updated_at: new Date().toISOString(),
+  });
 
   // 10. Snapshot portafoglio finale
   // Ricalcola posizioni dopo eventuali ingressi/uscite

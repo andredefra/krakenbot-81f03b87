@@ -1,1 +1,10 @@
 project_id = "ezplaipapmqxbzfrietj"
+
+[functions.trading-engine]
+verify_jwt = false
+
+[functions.daily-summary]
+verify_jwt = false
+
+[functions.historical-sync]
+verify_jwt = false
