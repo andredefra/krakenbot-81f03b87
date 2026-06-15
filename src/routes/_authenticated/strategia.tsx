@@ -335,13 +335,27 @@ function BacktestSection() {
           <>
             <div className="h-80 bg-card/50 rounded-md p-2 border border-border">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={runMut.data.equity as Array<{ date: string; strategy: number; btc: number; spx: number }>}>
+                <LineChart
+                  data={(() => {
+                    const raw = runMut.data.equity as Array<{ date: string; strategy: number; btc: number; spx: number }>;
+                    if (!raw.length) return [];
+                    const s0 = raw[0].strategy || 1;
+                    const b0 = raw[0].btc || 1;
+                    const p0 = raw[0].spx || 1;
+                    return raw.map((r) => ({
+                      date: r.date,
+                      strategy: (r.strategy / s0 - 1) * 100,
+                      btc: (r.btc / b0 - 1) * 100,
+                      spx: (r.spx / p0 - 1) * 100,
+                    }));
+                  })()}
+                >
                   <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={50} />
-                  <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
+                  <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} tickFormatter={(v) => `${v.toFixed(0)}%`} />
                   <Tooltip
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }}
-                    formatter={(v: number) => v.toLocaleString("it-IT", { maximumFractionDigits: 0 })}
+                    formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
                   <Line type="monotone" dataKey="strategy" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} name="Strategia" />
@@ -350,6 +364,7 @@ function BacktestSection() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+
 
             <div className="grid grid-cols-3 gap-3">
               <KpiCard title="Strategia" kpis={runMut.data.strategyKpis} highlight />
