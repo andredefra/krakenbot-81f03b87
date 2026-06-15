@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertTriangle, Sparkles } from "lucide-react";
-import { detectPreset, getPreset } from "@/lib/strategy-presets";
+import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
+import { detectPreset, getPreset, type PresetId } from "@/lib/strategy-presets";
+import { applyStrategyPreset } from "@/lib/strategy.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
