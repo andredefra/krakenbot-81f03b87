@@ -123,22 +123,11 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     // sorted by date returns the oldest rows first — SPX dominates and BTC/alts get truncated).
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
     const ohlcResults = await Promise.all(
-      allSyms.map((sym) =>
-        supabase
-          .from("historical_ohlc")
-          .select("date,close")
-          .eq("symbol", sym)
-          .gte("date", sinceStr)
-          .order("date", { ascending: true })
-          .range(0, 9999),
-      ),
+      allSyms.map((sym) => fetchOhlcAllPages(supabase, sym, sinceStr)),
     );
     for (let i = 0; i < allSyms.length; i++) {
-      const res = ohlcResults[i];
-      if (res.error) throw new Error(res.error.message);
-      if (res.data && res.data.length) {
-        bySym[allSyms[i]] = res.data.map((r) => ({ date: r.date as string, close: Number(r.close) }));
-      }
+      const rows = ohlcResults[i];
+      if (rows.length) bySym[allSyms[i]] = rows;
     }
     if (Object.keys(bySym).length === 0) {
       throw new Error("Storico non ancora popolato. Esegui historical-sync prima.");
@@ -147,13 +136,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       throw new Error("Storico BTC insufficiente (servono almeno 60 candele).");
     }
 
-    const fgRows = await supabase
-      .from("fg_history")
-      .select("date,value")
-      .gte("date", sinceStr)
-      .order("date", { ascending: true })
-      .range(0, 9999);
-    const fg = (fgRows.data ?? []).map((r) => ({ date: r.date as string, value: r.value }));
+    const fg = await fetchFgAllPages(supabase, sinceStr);
 
     const assets: Record<string, Array<{ date: string; close: number }>> = {};
     for (const sym of tradedSyms) {
