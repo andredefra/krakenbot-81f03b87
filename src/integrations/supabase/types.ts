@@ -77,40 +77,64 @@ export type Database = {
       engine_diagnostics: {
         Row: {
           btc_last: number | null
+          btc_sma200: number | null
           btc_sma50: number | null
           candidates: Json
+          core_state: Json | null
           cycle_at: string
           fg_label: string | null
           fg_value: number | null
+          macro_reason: string | null
+          macro_regime: string | null
+          meso_reason: string | null
+          meso_regime: string | null
           notes: string | null
           regime: string
           regime_reason: string | null
+          satellite_state: Json | null
+          universe_eligible: Json | null
           updated_at: string
           user_id: string
         }
         Insert: {
           btc_last?: number | null
+          btc_sma200?: number | null
           btc_sma50?: number | null
           candidates?: Json
+          core_state?: Json | null
           cycle_at?: string
           fg_label?: string | null
           fg_value?: number | null
+          macro_reason?: string | null
+          macro_regime?: string | null
+          meso_reason?: string | null
+          meso_regime?: string | null
           notes?: string | null
           regime: string
           regime_reason?: string | null
+          satellite_state?: Json | null
+          universe_eligible?: Json | null
           updated_at?: string
           user_id: string
         }
         Update: {
           btc_last?: number | null
+          btc_sma200?: number | null
           btc_sma50?: number | null
           candidates?: Json
+          core_state?: Json | null
           cycle_at?: string
           fg_label?: string | null
           fg_value?: number | null
+          macro_reason?: string | null
+          macro_regime?: string | null
+          meso_reason?: string | null
+          meso_regime?: string | null
           notes?: string | null
           regime?: string
           regime_reason?: string | null
+          satellite_state?: Json | null
+          universe_eligible?: Json | null
           updated_at?: string
           user_id?: string
         }
