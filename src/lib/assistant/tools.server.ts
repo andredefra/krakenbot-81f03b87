@@ -136,7 +136,8 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         const update = Object.fromEntries(entries);
         const { data, error } = await supabase
           .from("settings")
-          .update(update)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .update(update as any)
           .eq("user_id", userId)
           .select("*")
           .maybeSingle();
