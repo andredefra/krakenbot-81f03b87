@@ -31,7 +31,7 @@ const CORE_ASSETS = ["ETH", "SOL"];
 const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
 function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `v2|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+  return `v3|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
 }
 
 export const runBacktestFn = createServerFn({ method: "POST" })
@@ -111,15 +111,16 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const result = runBacktest({
       startCapital: data.startCapital,
       preset: {
-        max_positions: presetMeta.values.max_positions,
+        max_positions: presetMeta.values.max_satellite_positions,
         max_position_pct: presetMeta.values.max_position_pct,
-        stop_loss_pct: presetMeta.values.stop_loss_pct,
+        stop_loss_pct: presetMeta.values.stop_min_pct,
         trailing_activate_pct: presetMeta.values.trailing_activate_pct,
         trailing_gap_pct: presetMeta.values.trailing_gap_pct,
         take_profit_pct: presetMeta.values.take_profit_pct,
         daily_loss_limit_pct: presetMeta.values.daily_loss_limit_pct,
         fg_greed_cap: presetMeta.values.fg_greed_cap,
-        regime_filter: presetMeta.values.regime_filter,
+        // v2: il filtro macro per il core è BTC vs SMA200 (vedi STRATEGIA.md v2 §3.1)
+        regime_filter: "btc_sma200",
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
