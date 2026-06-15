@@ -42,7 +42,8 @@ export function AssistantChat({ className }: { className?: string }) {
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        headers: () => (token ? { Authorization: `Bearer ${token}` } : {}),
+        headers: (): Record<string, string> =>
+          token ? { Authorization: `Bearer ${token}` } : {},
       }),
     [token],
   );
