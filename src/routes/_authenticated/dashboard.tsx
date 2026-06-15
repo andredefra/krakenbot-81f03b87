@@ -9,12 +9,12 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { TrendingUp, TrendingDown, Activity, Gauge } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 
-type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
+type Timeframe = "1H" | "1D" | "1M" | "3M" | "1Y" | "ALL";
 const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
   { key: "1H", label: "1H", ms: 60 * 60 * 1000 },
   { key: "1D", label: "1G", ms: 24 * 60 * 60 * 1000 },
-  { key: "1W", label: "1S", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "1M", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
+  { key: "3M", label: "3M", ms: 90 * 24 * 60 * 60 * 1000 },
   { key: "1Y", label: "1A", ms: 365 * 24 * 60 * 60 * 1000 },
   { key: "ALL", label: "Tutto", ms: null },
 ];
