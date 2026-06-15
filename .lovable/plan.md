@@ -1,72 +1,59 @@
+## Obiettivo
+Allineare il pannello **Diagnostica** (e il motore che lo alimenta) all'architettura v2 Core-Satellite descritta in `STRATEGIA.md` / `BUILD_SPEC.md`: due regimi separati, split core/satellite, universo dinamico, max posizioni riferito al solo satellite.
 
-## Cosa non va (diagnosi)
+## Stato attuale (cosa non va)
+- `trading-engine` ha **un solo filtro di regime** (`btc_sma50` o `btc_sma200`, alternativi) e tratta tutti gli asset alla stessa stregua. Non distingue core da satellite.
+- `engine_diagnostics` salva solo `regime`, `regime_reason`, `btc_sma50`. Nessun campo macro / core state / universo eligible / spread / volume.
+- `diagnostica.tsx` mostra un'unica card "Regime di mercato" e usa `settings.max_positions` (globale) invece di `max_satellite_positions`.
+- I candidati arrivano da `asset_universe` statico (ETH/SOL/ADA/LINK/AVAX/DOT), non dalla tabella `universe` v2 (che esiste già ma è vuota — manca lo scanner).
 
-### 1. "Preset attivo: Custom" anche se Strategia mostra Bilanciato
-Nel DB `settings` per il tuo utente:
-- `strategy_preset = "balanced"` ✅
-- ma `take_profit_pct = 20` mentre il preset v2 Bilanciato richiede `25`.
+## Cosa cambia
 
-`detectPreset()` confronta tutti i campi numerici uno-a-uno: basta un mismatch e ricade su "custom". La causa è che la migrazione v2 ha aggiunto le nuove colonne ma **non ha riapplicato i valori del preset all'utente esistente** — `take_profit_pct` è rimasto al vecchio default (20). La pagina Strategia mostra "Già attivo" perché legge solo la colonna `strategy_preset`, mentre la pagina Rischio confronta i valori reali → conflitto visibile.
+### 1. DB — estendere `engine_diagnostics` (migration)
+Nuove colonne (tutte nullable, retro-compatibili):
+- `macro_regime` text · `macro_reason` text · `btc_sma200` numeric
+- `meso_regime` text · `meso_reason` text  *(rimpiazza concettualmente l'attuale `regime`, che resta per compat)*
+- `core_state` jsonb → `{ invested: bool, target: {BTC:0.6,ETH:0.4}, held: [{asset,qty,value_usd,weight_actual}] }`
+- `satellite_state` jsonb → `{ open: int, max: int, positions: [...] }`
+- `universe_eligible` jsonb → `[{asset, vol_24h_usd, spread_bps, age_days, eligible:true}]`
 
-### 2. "Hai chiesto 3 anni ma in DB c'è solo storico più breve" (e 5 anni dà lo stesso range)
-Nel DB i dati crypto vanno dal **2020-12-24 al 2026-06-15** (~5,5 anni). Ma i risultati cache mostrano:
-- 5 anni → `2021-06-15 → 2024-03-10` (≈ 2,74y)
-- 3 anni → `2023-06-15 → 2026-03-10` (≈ 2,74y)
+### 2. Engine — portare `trading-engine` al modello a 2 livelli
+Nello stesso file (niente split fisico in questa fase, lo scheduling resta unico):
+- Calcolare **macro** = BTC vs SMA200 → governa il core.
+- Calcolare **meso** = BTC vs SMA50 + F&G (logica attuale) → governa il satellite.
+- Ciclo core: se macro risk-on, target = `core_weights` su sleeve='core'; se risk-off, sposta core in stable. Ribilanciamento solo se drift > soglia (no churn ogni run).
+- Ciclo satellite: itera **solo** sugli asset `eligible=true` di `public.universe` (fallback `asset_universe.momentum` se tabella vuota), confronta con `max_satellite_positions` (default 2), NON con `max_positions`. Sleeve='satellite' nelle insert.
+- Il conteggio "max posizioni satellite" filtra `positions` per `sleeve='satellite'`.
+- Scrive sullo snapshot diagnostica i nuovi campi (macro, meso, core_state, satellite_state, universe_eligible con vol/spread presi durante lo scan).
 
-Sempre **circa 1000 candele**. Causa: PostgREST applica un `max-rows` interno (1000) che `.range(0, 9999)` **non** sovrascrive. La query BTC (master timeline del backtest) viene troncata a 1000 righe → il backtest gira solo sui primi ~2,74 anni della finestra richiesta. Chiedere "5 anni" o "3 anni" risulta nello stesso span.
+### 3. Universe scanner (minimo necessario)
+Nuova edge function `universe-scanner` (cron ~2h) che:
+- Chiama Kraken `AssetPairs` + `Ticker`, calcola `volume_24h_usd` e `spread_bps`.
+- Aggiorna `public.universe` con `eligible = vol >= settings.min_volume_24h && spread <= settings.max_spread_bps && age >= settings.min_age_days`.
+- Esclude BTC/ETH (riservati al core) e le stablecoin.
 
-### 3. Linea della Strategia invisibile nel grafico
-La linea Strategia usa `stroke="hsl(var(--primary))"` che nel tema è **verde** (lo stesso `#22c55e` usato per S&P 500). Le due linee si sovrappongono visivamente; la curva Strategia (+7%) sparisce sotto/dentro la curva S&P 500.
+Se preferisci rimandare lo scanner a un turno successivo, l'engine usa il fallback statico ma il pannello mostra comunque la sezione "Universo" vuota con stato chiaro.
 
----
+### 4. `diagnostics.functions.ts`
+Estendere `DiagnosticsPayload` con: `macro`, `meso`, `core`, `satellite`, `universe`. Leggere i nuovi campi della tabella; restituire `openSatellitePositions` (count `sleeve='satellite'`) e `max_satellite_positions` dalle settings.
 
-## Piano di intervento
+### 5. UI — `diagnostica.tsx`
+Refactor in 4 card:
+- **Regime MACRO** (verde/rosso) — BTC vs SMA200, badge "Core investito" / "Core in cash", lista asset core con peso target vs attuale.
+- **Regime MEDIO** — BTC vs SMA50 + F&G, badge satellite `0/2`, motivo.
+- **Universo eligible** — tabella con colonne Asset · Volume 24h · Spread (bps) · Età · Eligible.
+- **Candidati satellite valutati** — tabella attuale (Asset, Prezzo, SMA20, SMA50, Trend, Esito) ma sorgente = solo universo eligible.
 
-### A. Backtest — paginazione query OHLC (`src/lib/backtest.functions.ts`)
-Sostituire la singola chiamata `.range(0, 9999)` con un loop che pagina finché la risposta restituisce `pageSize` righe (PostgREST cap = 1000):
-
-```text
-const PAGE = 1000;
-let from = 0;
-let rows = [];
-while (true) {
-  const r = await supabase.from("historical_ohlc")
-    .select("date,close").eq("symbol", sym)
-    .gte("date", sinceStr).order("date", { ascending: true })
-    .range(from, from + PAGE - 1);
-  if (r.error) throw ...;
-  rows.push(...r.data);
-  if (r.data.length < PAGE) break;
-  from += PAGE;
-}
-```
-
-Stesso fix per `fg_history`. Bump cache hash da `v3|` → `v4|` per invalidare i risultati troncati. Risultato atteso: 5y → 2021-06-15 → 2026-06-15 (~5y reali); 3y → 2023-06-15 → 2026-06-15 (warning sparisce).
-
-### B. Preset detection / riallineamento (`src/lib/strategy-presets.ts` + `src/routes/_authenticated/settings.tsx`)
-Due opzioni, propongo la **(2)** che è più solida:
-
-1. (Quick fix) Rimuovere `take_profit_pct` da `DETECT_NUMERIC` → la riga "Custom" sparirebbe ma i parametri reali restano disallineati dal preset dichiarato (stop_loss/take-profit non in linea con v2).
-
-2. **(Consigliato)** Quando `strategy_preset` salvato ≠ `detectPreset()` calcolato, mostrare nella pagina Rischio un banner "Preset disallineato — i valori salvati non corrispondono più al preset `<X>`" con un bottone **"Riallinea al preset"** che chiama `applyStrategyPreset({preset: stored})`. Inoltre eseguire una migrazione one-shot che, per ogni utente con `strategy_preset='balanced' | 'conservative' | 'aggressive'`, riallinea i campi v2 (`take_profit_pct`, `min_target_pct`, ecc.) ai valori del preset. Così l'utente esistente parte già pulito e quelli futuri hanno comunque l'escape hatch.
-
-### C. Grafico — colore distinto per la linea Strategia (`src/routes/_authenticated/strategia.tsx`)
-Sostituire `stroke="hsl(var(--primary))"` con un blu/ciano distinto (es. `#60a5fa`) e portare lo `strokeWidth` a `2.5` per dare priorità visiva alla linea principale. Aggiungere `isAnimationActive={false}` su tutte le `<Line>` se non già presente per evitare flash su re-render.
-
-### D. Documento di strategia
-Nessuna modifica al contenuto di `STRATEGIA.md` v2: il problema è solo nel codice (caching + colori + sync preset).
-
----
+### 6. Settings
+- Forzare `max_satellite_positions = 2` per preset Bilanciato (già a 2). Nessuna migrazione dati extra: già allineato dal turno precedente.
+- Il vecchio `max_positions` resta come tetto totale (core+satellite) ma non è più mostrato nella diagnostica del satellite.
 
 ## File toccati
-- `src/lib/backtest.functions.ts` — paginazione query + bump hash a `v4|`
-- `src/lib/strategy-presets.ts` — (eventuale tweak `DETECT_NUMERIC`)
-- `src/routes/_authenticated/settings.tsx` — banner "Riallinea al preset"
-- `src/routes/_authenticated/strategia.tsx` — colore linea Strategia
-- Una migrazione SQL one-shot per riallineare le `settings` esistenti ai valori dei preset v2
+- `supabase/migrations/<new>.sql` — colonne diagnostiche
+- `supabase/functions/trading-engine/index.ts` — dual regime + sleeve + eligible universe + nuova scrittura snapshot
+- `supabase/functions/universe-scanner/index.ts` *(nuovo, se confermi)*
+- `src/lib/diagnostics.functions.ts` — payload esteso
+- `src/routes/_authenticated/diagnostica.tsx` — UI 4 card
 
-## Cosa non faccio
-- Non riavvio sync storico (i dati ci sono già fino al 2020-12-24, il bug era solo nel fetch lato backtest).
-- Non tocco engine di backtest (`backtest.server.ts`) né i preset numerici v2 — sono coerenti con `STRATEGIA.md` v2.
-
-Procedo?
+## Domanda prima di procedere
+Vuoi che includa **subito** lo `universe-scanner` (Fase 2 completa) oppure faccio prima allineamento engine+diagnostica con fallback statico e lo scanner in un turno separato?
