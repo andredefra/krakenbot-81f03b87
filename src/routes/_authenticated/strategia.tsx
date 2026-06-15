@@ -270,10 +270,11 @@ function BacktestSection() {
   const [preset, setPreset] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [years, setYears] = useState<1 | 3 | 5>(3);
   const [universe, setUniverse] = useState<"core" | "core_sleeve">("core_sleeve");
+  const [startCapital, setStartCapital] = useState<number>(200);
 
   const run = useServerFn(runBacktestFn);
   const runMut = useMutation({
-    mutationFn: () => run({ data: { preset, years, universe } }),
+    mutationFn: () => run({ data: { preset, years, universe, startCapital } }),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore backtest"),
   });
 
