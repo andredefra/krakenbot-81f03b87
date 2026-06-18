@@ -24,8 +24,8 @@ function DiagnosticaPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine v2</h1>
-          <p className="text-sm text-muted-foreground">Due regimi (macro/medio), stato Core e Satellite, universo dinamico</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine v3</h1>
+          <p className="text-sm text-muted-foreground">Regimi macro/meso, Core / Satellite / Bear-DCA, universo dinamico, fee Kraken reali</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
           <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
