@@ -177,7 +177,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
             const lossSum = -losses.reduce((s, t) => s + Number(t.pnl ?? 0), 0);
             const profitFactor = lossSum > 0 ? gross / lossSum : wins.length > 0 ? 99 : 0;
             const totalPnl = closed.reduce((s, t) => s + Number(t.pnl ?? 0), 0);
-            const fees30d = ((feesRes.data ?? []) as Array<{ fee_usd: number | null }>).reduce((s, r) => s + Number(r.fee_usd ?? 0), 0);
+            const fees30d = ((feesRes.data ?? []) as Array<{ fee_cents: number | null }>).reduce((s, r) => s + Number(r.fee_cents ?? 0) / 100, 0);
 
             const marketSnapshot = {
               macro_regime: macro,
