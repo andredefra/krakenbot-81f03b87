@@ -370,8 +370,11 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v2" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v3" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC Buy & Hold" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="dca" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="BTC DCA" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="trendCore" stroke="#10b981" dot={false} strokeWidth={1.5} name="BTC Trend (SMA200)" isAnimationActive={false} strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="trendDca" stroke="#14b8a6" dot={false} strokeWidth={1.5} name="BTC Trend+BearDCA" isAnimationActive={false} strokeDasharray="4 4" />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -383,20 +386,52 @@ function BacktestSection() {
               const cls = (v: number) => v >= startCapital ? "text-[color:var(--profit)]" : "text-[color:var(--loss)]";
               const sV = final(runMut.data.strategyKpis.totalReturnPct);
               const bV = final(runMut.data.btcKpis.totalReturnPct);
+              const dV = final(runMut.data.dcaKpis.totalReturnPct);
               const pV = final(runMut.data.spxKpis.totalReturnPct);
               return (
                 <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
                   <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
                   <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
                   <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
+                  <span>DCA <strong className={`tabular-nums ${cls(dV)}`}>{eur(dV)}</strong></span>
                   <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
                 </div>
               );
             })()}
 
-            <div className="grid grid-cols-3 gap-3">
-              <KpiCard title="Strategia v2" kpis={runMut.data.strategyKpis} highlight />
-              <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
+            {/* GO LIVE gate */}
+            {(() => {
+              const c = runMut.data.liveGateChecks;
+              const items: Array<[string, boolean]> = [
+                ["Profit Factor > 1.3", c.profitFactorOk],
+                ["Sharpe > 0.8", c.sharpeOk],
+                ["Sharpe ≥ DCA", c.beatsDcaSharpe],
+                ["Max DD ≤ DCA", c.beatsDcaDrawdown],
+              ];
+              const pass = runMut.data.passesLiveGate;
+              return (
+                <div className={`rounded-md border p-3 ${pass ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}`}>
+                  <div className="text-sm font-medium mb-2">
+                    {pass ? "✅ Cancello GO LIVE: PASSATO" : "⚠️ Cancello GO LIVE: NON passato"}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    {items.map(([label, ok]) => (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className={ok ? "text-emerald-500" : "text-amber-500"}>{ok ? "✓" : "✗"}</span>
+                        <span className={ok ? "" : "text-muted-foreground"}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <KpiCard title="Strategia v3" kpis={runMut.data.strategyKpis} highlight />
+              <KpiCard title="BTC Buy & Hold" kpis={runMut.data.btcKpis} />
+              <KpiCard title="BTC DCA" kpis={runMut.data.dcaKpis} />
+              <KpiCard title="BTC Trend" kpis={runMut.data.trendCoreKpis} />
+              <KpiCard title="BTC Trend+BearDCA" kpis={runMut.data.trendDcaKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
 
