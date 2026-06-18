@@ -79,7 +79,6 @@ export function AssistantChat({ className }: { className?: string }) {
     textareaRef.current?.focus();
   }, []);
 
-  const isStreaming = status === "submitted" || status === "streaming";
 
   return (
     <div className={`flex flex-col h-full min-h-0 bg-background ${className ?? ""}`}>
