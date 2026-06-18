@@ -14,11 +14,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Asset da escludere dal satellite: core + stablecoin
+// Asset da escludere dal satellite: core + stablecoin (sempre)
 const EXCLUDE = new Set([
   "BTC", "XBT", "ETH",
   "USDT", "USDC", "DAI", "USD", "EUR", "USDS", "PYUSD", "TUSD", "RLUSD",
   "EURT", "GBP", "JPY", "CAD", "AUD", "CHF",
+]);
+// Token tokenizzati di fiat o commodity (oro, argento): esclusi se exclude_fiat_commodity = true (v3)
+const FIAT_COMMODITY = new Set([
+  "PAXG", "XAUT", "ZEUR", "ZUSD", "EURT", "USDP", "USTC", "XAGT",
 ]);
 
 type AssetPair = {
