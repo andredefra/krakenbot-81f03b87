@@ -48,11 +48,13 @@ Deno.serve(async (req) => {
     // Soglie: prendi la più conservativa fra gli utenti attivi (fallback default)
     const { data: settingsRows } = await supa
       .from("settings")
-      .select("min_volume_24h,max_spread_pct,min_listing_age_days,is_running")
+      .select("min_volume_24h,max_spread_pct,min_listing_age_days,is_running,exclude_fiat_commodity")
       .eq("is_running", true);
     const minVol = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_volume_24h)).filter((n) => !Number.isNaN(n)), 5_000_000);
     const maxSpread = Math.min(...(settingsRows ?? []).map((s) => Number(s.max_spread_pct)).filter((n) => !Number.isNaN(n)), 0.3);
     const minAge = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_listing_age_days)).filter((n) => !Number.isNaN(n)), 60);
+    // Se ALMENO uno degli utenti attivi ha attivato exclude_fiat_commodity, applichiamo l'esclusione (conservativo)
+    const excludeFiatCommodity = (settingsRows ?? []).some((s) => Boolean(s.exclude_fiat_commodity));
 
     // 1) Lista coppie
     const apResp = await fetch("https://api.kraken.com/0/public/AssetPairs");
