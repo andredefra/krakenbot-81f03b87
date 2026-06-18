@@ -107,7 +107,6 @@ function SettingsPage() {
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
-  const [toggles, setToggles] = useState<Record<string, boolean>>({});
   const [timeframe, setTimeframe] = useState("4h");
 
   useEffect(() => {
@@ -115,9 +114,6 @@ function SettingsPage() {
       const next: Record<string, string> = {};
       for (const f of ALL_FIELDS) next[f.key] = String((q.data as Record<string, unknown>)[f.key] ?? "");
       setForm(next);
-      const t: Record<string, boolean> = {};
-      for (const tg of TOGGLE_FIELDS) t[tg.key] = Boolean((q.data as Record<string, unknown>)[tg.key]);
-      setToggles(t);
       setTimeframe(q.data.timeframe ?? "4h");
     }
   }, [q.data]);
@@ -131,7 +127,6 @@ function SettingsPage() {
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
-      for (const tg of TOGGLE_FIELDS) patch[tg.key] = toggles[tg.key] ?? false;
       const merged = { ...(q.data as Record<string, unknown>), ...patch };
       const newPreset = detectPreset(merged);
       patch.strategy_preset = newPreset;
