@@ -269,12 +269,11 @@ function diffRow(label: string, cur: unknown, next: unknown, suffix = ""): { lab
 function BacktestSection() {
   const [preset, setPreset] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [years, setYears] = useState<1 | 3 | 5>(3);
-  const [universe, setUniverse] = useState<"core" | "core_sleeve">("core_sleeve");
   const [startCapital, setStartCapital] = useState<number>(200);
 
   const run = useServerFn(runBacktestFn);
   const runMut = useMutation({
-    mutationFn: () => run({ data: { preset, years, universe, startCapital } }),
+    mutationFn: () => run({ data: { preset, years, startCapital } }),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore backtest"),
   });
 
@@ -284,12 +283,12 @@ function BacktestSection() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
-            <CardDescription>Strategia v3 vs BTC Buy &amp; Hold, DCA, Trend, Trend+BearDCA e S&amp;P 500</CardDescription>
+            <CardDescription>Strategia v3 vs BTC Buy &amp; Hold e S&amp;P 500. L'universo asset è gestito automaticamente dall'AI Supervisor.</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Preset</label>
             <Select value={preset} onValueChange={(v) => setPreset(v as typeof preset)}>
@@ -309,16 +308,6 @@ function BacktestSection() {
                 <SelectItem value="1">1 anno</SelectItem>
                 <SelectItem value="3">3 anni</SelectItem>
                 <SelectItem value="5">5 anni</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Universo satellite</label>
-            <Select value={universe} onValueChange={(v) => setUniverse(v as typeof universe)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="core">Solo ETH/SOL</SelectItem>
-                <SelectItem value="core_sleeve">ETH/SOL + top alt liquide</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -372,9 +361,6 @@ function BacktestSection() {
                   <Legend />
                   <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v3" isAnimationActive={false} />
                   <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC Buy & Hold" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="dca" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="BTC DCA" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="trendCore" stroke="#10b981" dot={false} strokeWidth={1.5} name="BTC Trend (SMA200)" isAnimationActive={false} strokeDasharray="4 4" />
-                  <Line type="monotone" dataKey="trendDca" stroke="#14b8a6" dot={false} strokeWidth={1.5} name="BTC Trend+BearDCA" isAnimationActive={false} strokeDasharray="4 4" />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -386,14 +372,12 @@ function BacktestSection() {
               const cls = (v: number) => v >= startCapital ? "text-[color:var(--profit)]" : "text-[color:var(--loss)]";
               const sV = final(runMut.data.strategyKpis.totalReturnPct);
               const bV = final(runMut.data.btcKpis.totalReturnPct);
-              const dV = final(runMut.data.dcaKpis.totalReturnPct);
               const pV = final(runMut.data.spxKpis.totalReturnPct);
               return (
                 <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
                   <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
                   <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
-                  <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
-                  <span>DCA <strong className={`tabular-nums ${cls(dV)}`}>{eur(dV)}</strong></span>
+                  <span>BTC B&amp;H <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
                   <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
                 </div>
               );
@@ -405,8 +389,8 @@ function BacktestSection() {
               const items: Array<[string, boolean]> = [
                 ["Profit Factor > 1.3", c.profitFactorOk],
                 ["Sharpe > 0.8", c.sharpeOk],
-                ["Sharpe ≥ DCA", c.beatsDcaSharpe],
-                ["Max DD ≤ DCA", c.beatsDcaDrawdown],
+                ["Sharpe ≥ BTC B&H", c.beatsBtcSharpe],
+                ["Max DD ≤ BTC B&H", c.beatsBtcDrawdown],
               ];
               const pass = runMut.data.passesLiveGate;
               return (
@@ -426,12 +410,9 @@ function BacktestSection() {
               );
             })()}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <KpiCard title="Strategia v3" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC Buy & Hold" kpis={runMut.data.btcKpis} />
-              <KpiCard title="BTC DCA" kpis={runMut.data.dcaKpis} />
-              <KpiCard title="BTC Trend" kpis={runMut.data.trendCoreKpis} />
-              <KpiCard title="BTC Trend+BearDCA" kpis={runMut.data.trendDcaKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
 
@@ -456,10 +437,10 @@ function BacktestSection() {
             <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
               <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v3)</div>
               <div>• <strong>Strategia v3 Core-Led</strong>: core (BTC/ETH) protetto da filtro macro SMA200 BTC; satellite con regole strette.</div>
-              <div>• <strong>Benchmark equi</strong>: oltre a Buy &amp; Hold e S&amp;P 500, includiamo BTC DCA e BTC Trend (SMA200) con/senza Bear-DCA — gli stessi metri usati dal cancello GO LIVE.</div>
-              <div>• <strong>Bear-DCA</strong>: in downtrend con drawdown profondo, accumula tranche fino al tetto (parametri da pagina Rischio).</div>
+              <div>• <strong>Universo</strong>: l'AI Supervisor decide a runtime quali asset attivare. Il backtest simula l'universo Kraken completo come riferimento storico.</div>
+              <div>• <strong>Benchmark</strong>: BTC Buy &amp; Hold (rendimento passivo crypto) e S&amp;P 500 (rendimento passivo equity USA).</div>
               <div>• <strong>Commissioni reali Kraken</strong>: taker e slippage letti dai tuoi settings (default taker 0.40% + slip 0.05%).</div>
-              <div>• <strong>Cancello GO LIVE</strong>: Profit Factor &gt; 1.3, Sharpe &gt; 0.8, Sharpe ≥ DCA, MaxDD ≤ DCA.</div>
+              <div>• <strong>Cancello GO LIVE</strong>: Profit Factor &gt; 1.3, Sharpe &gt; 0.8, Sharpe ≥ BTC B&amp;H, MaxDD ≤ BTC B&amp;H.</div>
               <div className="pt-1 opacity-80">Storico crypto: Binance (storico lungo) + Kraken OHLC recenti. S&amp;P 500: Yahoo/Stooq.</div>
             </div>
 
@@ -480,6 +461,7 @@ function BacktestSection() {
     </Card>
   );
 }
+
 
 type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; sortino: number; trades: number; winRatePct: number; profitFactor: number };
 

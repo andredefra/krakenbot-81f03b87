@@ -10,7 +10,6 @@ import { getPreset, type PresetId } from "./strategy-presets";
 const inputSchema = z.object({
   preset: z.enum(["conservative", "balanced", "aggressive"]),
   years: z.number().int().min(1).max(5),
-  universe: z.enum(["core", "core_sleeve"]),
   startCapital: z.number().min(10).max(1_000_000).default(200),
 });
 
@@ -18,27 +17,24 @@ type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number;
 
 export type BacktestPayload = {
   cached: boolean;
-  equity: Array<{ date: string; strategy: number; btc: number; spx: number; dca: number; trendCore: number; trendDca: number }>;
+  equity: Array<{ date: string; strategy: number; btc: number; spx: number }>;
   strategyKpis: KpisShape;
   btcKpis: KpisShape;
   spxKpis: KpisShape;
-  dcaKpis: KpisShape;
-  trendCoreKpis: KpisShape;
-  trendDcaKpis: KpisShape;
   passesLiveGate: boolean;
-  liveGateChecks: { profitFactorOk: boolean; sharpeOk: boolean; beatsDcaSharpe: boolean; beatsDcaDrawdown: boolean };
+  liveGateChecks: { profitFactorOk: boolean; sharpeOk: boolean; beatsBtcSharpe: boolean; beatsBtcDrawdown: boolean };
   tradesCount: number;
-  universe: string;
   preset: string;
   years: number;
 };
 
-// Universe = which crypto assets get traded (BTC always loaded for regime + benchmark)
-const CORE_ASSETS = ["ETH", "SOL"];
-const SLEEVE_ASSETS = ["ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+// Universo completo Kraken: l'AI Supervisor decide a runtime quali asset
+// usare (core_only_mode / exclude_fiat_commodity). Il backtest simula lo
+// scenario "AI lascia accesso libero" come riferimento storico.
+const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
 
-function hashInput(input: { preset: string; years: number; universe: string; startCapital: number }): string {
-  return `v4|${input.preset}|${input.years}y|${input.universe}|${input.startCapital}€`;
+function hashInput(input: { preset: string; years: number; startCapital: number }): string {
+  return `v5|${input.preset}|${input.years}y|${input.startCapital}€`;
 }
 
 // PostgREST applica un max-rows interno (1000) che .range(0, 9999) NON sovrascrive:
@@ -53,7 +49,6 @@ async function fetchOhlcAllPages(
 ): Promise<Array<{ date: string; close: number }>> {
   const out: Array<{ date: string; close: number }> = [];
   let from = 0;
-  // safety cap (15k rows = ~40 anni daily)
   while (from < 15000) {
     const r = await supabase
       .from("historical_ohlc")
@@ -137,8 +132,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     since.setFullYear(since.getFullYear() - data.years);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    const tradedSyms = data.universe === "core" ? CORE_ASSETS : [...CORE_ASSETS, ...SLEEVE_ASSETS];
-    const allSyms = ["BTC", "SPX", ...tradedSyms];
+    const allSyms = ["BTC", "SPX", ...FULL_UNIVERSE];
 
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
     const ohlcResults = await Promise.all(
@@ -158,7 +152,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const fg = await fetchFgAllPages(supabase, sinceStr);
 
     const assets: Record<string, Array<{ date: string; close: number }>> = {};
-    for (const sym of tradedSyms) {
+    for (const sym of FULL_UNIVERSE) {
       if (bySym[sym] && bySym[sym].length > 50) assets[sym] = bySym[sym];
     }
 
@@ -202,13 +196,9 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       strategyKpis: result.strategyKpis,
       btcKpis: result.btcKpis,
       spxKpis: result.spxKpis,
-      dcaKpis: result.dcaKpis,
-      trendCoreKpis: result.trendCoreKpis,
-      trendDcaKpis: result.trendDcaKpis,
       passesLiveGate: result.passesLiveGate,
       liveGateChecks: result.liveGateChecks,
       tradesCount: result.tradeLog.length,
-      universe: data.universe,
       preset: data.preset,
       years: data.years,
     };
@@ -220,7 +210,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         input_hash,
         preset: data.preset,
         years: data.years,
-        universe: data.universe,
+        universe: "ai_managed",
         result: payload,
         passes_live_gate: result.passesLiveGate,
       });
