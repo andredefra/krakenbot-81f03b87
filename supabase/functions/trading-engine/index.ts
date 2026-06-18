@@ -85,6 +85,18 @@ type Settings = {
   max_satellite_positions?: number;
   macro_ma_period?: number;
   mid_ma_period?: number;
+  monthly_trade_cap?: number;
+  // v3
+  taker_fee_pct?: number;
+  maker_fee_pct?: number;
+  slippage_pct?: number;
+  core_only_mode?: boolean;
+  bear_dca_enabled?: boolean;
+  bear_dca_fg_threshold?: number;
+  bear_dca_cap_pct?: number;
+  bear_dca_tranche_pct?: number;
+  bear_dca_interval_days?: number;
+  exclude_fiat_commodity?: boolean;
 };
 
 type Position = {
