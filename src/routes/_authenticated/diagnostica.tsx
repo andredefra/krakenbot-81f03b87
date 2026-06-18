@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Sparkles } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
+import { listFlagChanges } from "@/lib/ai-supervisor.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
   component: DiagnosticaPage,
@@ -58,6 +59,12 @@ function DiagnosticaPage() {
 function Diag({ data }: { data: DiagnosticsPayload }) {
   const macroOn = data.macro.regime === "risk-on";
   const mesoOn = data.meso.regime === "risk-on";
+  const fetchFlags = useServerFn(listFlagChanges);
+  const flagsQ = useQuery({
+    queryKey: ["ai-flag-changes"],
+    queryFn: () => fetchFlags({ data: { limit: 10 } }),
+    refetchInterval: 60_000,
+  });
 
   return (
     <>
@@ -235,6 +242,33 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Ultime regole automatiche */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Regole automatiche — ultimi cambi flag</CardTitle>
+          <CardDescription>I 3 flag meccanici sono decisi da regole esplicite. Tutto il resto richiede approvazione umana via <code>Proposte</code>.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {flagsQ.isLoading ? <Skeleton className="h-20 w-full" /> : (flagsQ.data ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nessun cambio registrato. I flag restano allo stato corrente finché una regola non scatta.</div>
+          ) : (
+            <div className="space-y-1.5 text-sm">
+              {(flagsQ.data ?? []).map((c: { id: string; flag: string; from_value: boolean | null; to_value: boolean; rule_triggered: string; created_at: string }) => (
+                <div key={c.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
+                  <Badge variant="outline" className="text-xs shrink-0">{c.flag}</Badge>
+                  <span className="text-muted-foreground text-xs">
+                    {c.from_value ? "ON" : "OFF"} → <span className="font-semibold text-foreground">{c.to_value ? "ON" : "OFF"}</span>
+                  </span>
+                  <span className="text-xs flex-1">{c.rule_triggered}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{new Date(c.created_at).toLocaleString("it-IT")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
 
       {/* Bot status */}
       <Card>

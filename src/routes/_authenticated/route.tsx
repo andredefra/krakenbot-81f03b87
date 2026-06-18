@@ -20,6 +20,8 @@ import {
   Stethoscope,
   Target,
   LogOut,
+  Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FloatingChat } from "@/components/assistant/FloatingChat";
@@ -43,6 +45,8 @@ const NAV = [
   { to: "/settings", label: "Rischio", icon: SettingsIcon },
   { to: "/diagnostica", label: "Diagnostica", icon: Stethoscope },
   { to: "/sentiment", label: "Sentiment", icon: Activity },
+  { to: "/diario", label: "Diario AI", icon: Sparkles },
+  { to: "/proposte", label: "Proposte AI", icon: ClipboardList },
   { to: "/mode", label: "Modalità", icon: Power },
   { to: "/logs", label: "Log", icon: ScrollText },
   { to: "/assistant", label: "Assistente", icon: MessageCircle },
