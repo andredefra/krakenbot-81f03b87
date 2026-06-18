@@ -114,6 +114,43 @@ export function buildAssistantTools(supabase: DB, userId: string) {
       },
     }),
 
+    getDiagnostics: tool({
+      description: "Stato completo dell'engine v3: regime macro/meso, sleeve Core (holdings + target), conteggio satellite, stato Bear-DCA (attivo/deployato/cap), universe eligible, fee totali pagate, flag Core-Only/Bear-DCA/filtro fiat.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const [diagRes, settingsRes, openRes, feesRes] = await Promise.all([
+          supabase.from("engine_diagnostics").select("*").eq("user_id", userId).maybeSingle(),
+          supabase.from("settings").select("is_running,mode,strategy_preset,max_satellite_positions,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct,bear_dca_tranche_pct,bear_dca_interval_days,taker_fee_pct,maker_fee_pct,slippage_pct,min_target_pct,monthly_trade_cap").eq("user_id", userId).maybeSingle(),
+          supabase.from("positions").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "open"),
+          supabase.from("positions").select("fee_paid_usd,sleeve").eq("user_id", userId),
+        ]);
+        const totalFees = (feesRes.data ?? []).reduce((a, r) => a + Number(r.fee_paid_usd ?? 0), 0);
+        return {
+          diagnostics: diagRes.data ?? null,
+          settings: settingsRes.data ?? null,
+          open_positions_count: openRes.count ?? 0,
+          total_fees_usd: totalFees,
+        };
+      },
+    }),
+
+    getLatestBacktest: tool({
+      description: "Ultimo backtest v3 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC DCA).",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { data, error } = await supabase
+          .from("backtest_runs")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data ?? { note: "Nessun backtest ancora eseguito." };
+      },
+    }),
+
+
     // -------------------- WRITE TOOLS --------------------
     updateRiskSettings: tool({
       description: "Modifica uno o più parametri di rischio. Passa SOLO i campi da cambiare. Prima di chiamarlo devi spiegare in chat cosa stai per cambiare e perché, e attendere conferma esplicita dell'utente.",
@@ -121,6 +158,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         capital_reference: z.number().positive().optional(),
         kill_switch_floor: z.number().positive().optional(),
         max_positions: z.number().int().min(1).max(20).optional(),
+        max_satellite_positions: z.number().int().min(0).max(10).optional(),
         max_position_pct: z.number().min(1).max(100).optional(),
         stop_loss_pct: z.number().min(0.1).max(50).optional(),
         trailing_activate_pct: z.number().min(0).max(50).optional(),
@@ -128,7 +166,19 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         take_profit_pct: z.number().min(0.1).max(100).optional(),
         min_target_pct: z.number().min(0).max(50).optional(),
         daily_loss_limit_pct: z.number().min(0.1).max(50).optional(),
+        monthly_trade_cap: z.number().int().min(1).max(50).optional(),
         timeframe: z.enum(["15m", "30m", "1h", "2h", "4h", "1d"]).optional(),
+        // v3 flags & params
+        core_only_mode: z.boolean().optional(),
+        bear_dca_enabled: z.boolean().optional(),
+        exclude_fiat_commodity: z.boolean().optional(),
+        bear_dca_fg_threshold: z.number().int().min(0).max(50).optional(),
+        bear_dca_cap_pct: z.number().min(0).max(100).optional(),
+        bear_dca_tranche_pct: z.number().min(0.1).max(50).optional(),
+        bear_dca_interval_days: z.number().int().min(1).max(60).optional(),
+        taker_fee_pct: z.number().min(0).max(2).optional(),
+        maker_fee_pct: z.number().min(0).max(2).optional(),
+        slippage_pct: z.number().min(0).max(2).optional(),
       }),
       execute: async (patch) => {
         const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
