@@ -216,7 +216,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     } else if (price >= p.entry_price * (1 + settings.take_profit_pct / 100)) {
       exitReason = "take profit";
     }
-    if (exitReason) await closePosition(supa, userId, settings, p, price, exitReason);
+    if (exitReason) await closePosition(supa, userId, settings, p, price, exitReason, takerFeePct);
   }
 
   // 8. REGIME MACRO (governa il Core) — BTC vs SMA200
