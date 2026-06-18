@@ -79,6 +79,13 @@ export type DiagnosticsPayload = {
   } | null;
   openPositions: number;
   totalFeesUsd: number;
+  aiSupervisor: {
+    lastRunAt: string | null;
+    decision: { core_only_mode: boolean; bear_dca_enabled: boolean; exclude_fiat_commodity: boolean } | null;
+    reasoning: string | null;
+    confidence: "low" | "medium" | "high" | null;
+    changedFlags: string[];
+  };
   lastEngineMessage: string | null;
   lastEngineAt: string | null;
 };
