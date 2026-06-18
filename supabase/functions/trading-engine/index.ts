@@ -120,7 +120,7 @@ type Position = {
 // Core loop ------------------------------------------------------------------
 async function runCycle(supa: ReturnType<typeof createClient>, settings: Settings) {
   const userId = settings.user_id;
-  await log(supa, userId, "info", "trading-engine", `Ciclo v2 avviato (${settings.mode})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v3 avviato (${settings.mode})`);
 
   const macroPeriod = settings.macro_ma_period ?? 200;
   const midPeriod = settings.mid_ma_period ?? 50;
@@ -128,6 +128,16 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const coreWeights = settings.core_weights ?? { BTC: 0.6, ETH: 0.4 };
   const split = settings.core_satellite_split ?? { core: 0.6, satellite: 0.4 };
   const maxSatPos = settings.max_satellite_positions ?? 2;
+  // v3
+  const takerFeePct = Number(settings.taker_fee_pct ?? 0.4);
+  const coreOnly = Boolean(settings.core_only_mode ?? false);
+  const bdEnabled = Boolean(settings.bear_dca_enabled ?? true);
+  const bdFgThreshold = Number(settings.bear_dca_fg_threshold ?? 22);
+  const bdCapPct = Number(settings.bear_dca_cap_pct ?? 30);
+  const bdTranchePct = Number(settings.bear_dca_tranche_pct ?? 5);
+  const bdIntervalDays = Number(settings.bear_dca_interval_days ?? 14);
+  const monthlyCap = Number(settings.monthly_trade_cap ?? 6);
+  const minTargetPct = Number(settings.min_target_pct ?? 5);
 
   // 1. Posizioni aperte
   const { data: openPos, error: oerr } = await supa
@@ -136,6 +146,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const positions = (openPos ?? []) as Position[];
   const corePos = positions.filter((p) => p.sleeve === "core");
   const satPos = positions.filter((p) => (p.sleeve ?? "satellite") === "satellite");
+  const dcaPos = positions.filter((p) => p.sleeve === "dca");
 
   // 2. Universo eligible (dinamico)
   const { data: universeRows } = await supa
