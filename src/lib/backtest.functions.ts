@@ -32,9 +32,10 @@ export type BacktestPayload = {
 // usare (core_only_mode / exclude_fiat_commodity). Il backtest simula lo
 // scenario "AI lascia accesso libero" come riferimento storico.
 const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+const CORE_ASSETS = ["BTC", "ETH"]; // sleeve core buy & hold equipesato
 
 function hashInput(input: { preset: string; years: number; startCapital: number }): string {
-  return `v5|${input.preset}|${input.years}y|${input.startCapital}€`;
+  return `v6|${input.preset}|${input.years}y|${input.startCapital}€`;
 }
 
 // PostgREST applica un max-rows interno (1000) che .range(0, 9999) NON sovrascrive:
@@ -152,7 +153,9 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const fg = await fetchFgAllPages(supabase, sinceStr);
 
     const assets: Record<string, Array<{ date: string; close: number }>> = {};
-    for (const sym of FULL_UNIVERSE) {
+    // include core BTC/ETH come asset disponibili (core sleeve) + satellite
+    const allTradedSyms = [...new Set([...CORE_ASSETS, ...FULL_UNIVERSE])];
+    for (const sym of allTradedSyms) {
       if (bySym[sym] && bySym[sym].length > 50) assets[sym] = bySym[sym];
     }
 
