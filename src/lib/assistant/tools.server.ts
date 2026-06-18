@@ -168,10 +168,8 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         daily_loss_limit_pct: z.number().min(0.1).max(50).optional(),
         monthly_trade_cap: z.number().int().min(1).max(50).optional(),
         timeframe: z.enum(["15m", "30m", "1h", "2h", "4h", "1d"]).optional(),
-        // v3 flags & params
-        core_only_mode: z.boolean().optional(),
-        bear_dca_enabled: z.boolean().optional(),
-        exclude_fiat_commodity: z.boolean().optional(),
+        // v3 — Bear-DCA tuning (i 3 flag core_only/bear_dca_enabled/exclude_fiat
+        // sono gestiti dall'AI Supervisor: NON esporli qui)
         bear_dca_fg_threshold: z.number().int().min(0).max(50).optional(),
         bear_dca_cap_pct: z.number().min(0).max(100).optional(),
         bear_dca_tranche_pct: z.number().min(0.1).max(50).optional(),
