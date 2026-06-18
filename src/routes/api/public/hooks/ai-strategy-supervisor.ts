@@ -89,7 +89,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
               supabaseAdmin.from("engine_diagnostics").select("macro_regime,meso_regime,fg_value,fg_label,btc_last,btc_sma200,btc_sma50,bear_dca_state").eq("user_id", userId).maybeSingle(),
               supabaseAdmin.from("portfolio_snapshots").select("ts,total_value").eq("user_id", userId).gte("ts", new Date(Date.now() - 30 * 86400_000).toISOString()).order("ts", { ascending: true }),
               supabaseAdmin.from("positions").select("pnl,closed_at,asset").eq("user_id", userId).eq("status", "closed").gte("closed_at", new Date(Date.now() - 30 * 86400_000).toISOString()),
-              supabaseAdmin.from("trade_fees").select("fee_usd").eq("user_id", userId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()),
+              supabaseAdmin.from("trade_fees").select("fee_cents").eq("user_id", userId).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()),
             ]);
 
             const diag = diagRes.data;
