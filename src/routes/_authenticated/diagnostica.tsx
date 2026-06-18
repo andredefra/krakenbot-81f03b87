@@ -15,16 +15,10 @@ export const Route = createFileRoute("/_authenticated/diagnostica")({
 
 function DiagnosticaPage() {
   const fetchFn = useServerFn(getDiagnostics);
-  const fetchFlags = useServerFn(listFlagChanges);
   const q = useQuery({
     queryKey: ["diagnostics"],
     queryFn: () => fetchFn(),
     refetchOnWindowFocus: false,
-  });
-  const flagsQ = useQuery({
-    queryKey: ["ai-flag-changes"],
-    queryFn: () => fetchFlags({ data: { limit: 10 } }),
-    refetchInterval: 60_000,
   });
 
   return (
