@@ -1,77 +1,73 @@
 ## Obiettivo
-Delegare i 3 interruttori strategici (`core_only_mode`, `bear_dca_enabled`, `exclude_fiat_commodity`) a un **AI Supervisor** che gira ogni ora, decide in autonomia in base al preset attivo + condizioni di mercato, e applica i flag senza chiedere conferma.
 
-## 1. Server route AI Supervisor
+Semplificare la pagina **Strategia → Backtest** per riflettere il nuovo modello in cui l'AI Supervisor decide universo e interruttori in autonomia. L'utente deve poter scegliere solo:
 
-Nuovo file: `src/routes/api/public/hooks/ai-strategy-supervisor.ts` (route pubblica, header `apikey` per pg_cron).
+- **Preset** (Conservativo / Bilanciato / Aggressivo)
+- **Periodo** (1 / 3 / 5 anni)
+- **Capitale iniziale** (€)
 
-Per ogni utente con `is_running=true`:
-1. Carica: `settings` (preset, flag attuali, parametri Bear-DCA), `engine_diagnostics` (macro/meso, F&G, BTC vs SMA200/50, bear_dca_state), ultimi 30g di `positions` chiuse (win rate, PF, drawdown corrente), totale fee pagate.
-2. Chiama **Lovable AI Gateway** (`google/gemini-3-flash-preview`) con `Output.object` strutturato:
-   ```ts
-   { core_only_mode: boolean, bear_dca_enabled: boolean,
-     exclude_fiat_commodity: boolean, reasoning: string,
-     confidence: "low"|"medium"|"high" }
-   ```
-3. System prompt: regole deterministiche per preset come **baseline**, l'AI può deviare se condizioni di mercato lo giustificano:
-   - **Conservative**: default bear_dca=ON sempre, exclude_fiat=ON, core_only=ON se drawdown 30g > 15% o F&G > 80
-   - **Balanced**: default bear_dca=ON, exclude_fiat=ON, core_only=ON solo se drawdown > 20% o F&G > 85
-   - **Aggressive**: default bear_dca=ON solo se F&G < 30, exclude_fiat=OFF (cerca alpha ovunque), core_only=OFF salvo emergenze
-4. **Applica diff**: solo se almeno un flag cambia → `UPDATE settings`, log `events_log` (component=`ai-supervisor`), notifica Telegram (`🤖 AI Supervisor: bear_dca ON→OFF — motivo: …`).
-5. Salva sempre lo stato AI in `settings.ai_supervisor_state` (JSONB) per tracciamento.
+Confronto vs **due benchmark** soltanto: **BTC Buy & Hold** e **S&P 500**.
 
-## 2. Schema DB
+---
 
-Migrazione: nuova colonna `settings.ai_supervisor_state JSONB` con shape:
-```json
-{ "last_run_at": "2026-06-18T15:00:00Z",
-  "last_decision": { "core_only_mode": false, "bear_dca_enabled": true,
-                     "exclude_fiat_commodity": true },
-  "reasoning": "Macro risk-off + F&G 15 → mantengo bear_dca ON…",
-  "confidence": "high",
-  "changed_flags": ["bear_dca_enabled"] }
-```
+## Modifiche
 
-## 3. Cron orario
+### 1. UI — `src/routes/_authenticated/strategia.tsx`
 
-Via `supabase--insert` (non migration): `pg_cron` orario che POST a `https://project--83246337-7089-4f55-8513-1c18d291c310.lovable.app/api/public/hooks/ai-strategy-supervisor`.
+**Rimozioni:**
+- Selettore "Universo satellite" (Solo ETH/SOL / + top alt liquide) e relativo state `universe`.
+- Riga riassuntiva "Da X €" → mantengo solo Strategia / BTC / S&P 500 (rimuovo DCA).
+- Card KPI: rimuovo `BTC DCA`, `BTC Trend`, `BTC Trend+BearDCA`. Resta grid a 3 colonne: `Strategia v3` (highlight), `BTC Buy & Hold`, `S&P 500`.
+- Linee del grafico: rimuovo `dca`, `trendCore`, `trendDca`. Restano `strategy`, `btc`, `spx`.
+- Layout form: griglia passa da `md:grid-cols-5` a `md:grid-cols-4` (Preset, Periodo, Capitale, Bottone).
+- Descrizione card aggiornata: "Strategia v3 vs BTC Buy & Hold e S&P 500".
+- Box "Cosa è incluso": rimuovo bullet su DCA/Trend/BearDCA; aggiorno la riga GO LIVE (vedi sotto).
 
-## 4. Settings UI — nascondere i 3 toggle
+**Cancello GO LIVE (riformulato):**
+Il gate attuale confronta con DCA. Lo riallineo a BTC Buy & Hold (benchmark passivo standard):
+- Profit Factor > 1.3
+- Sharpe > 0.8
+- Sharpe ≥ BTC B&H · *(rinominato)*
+- Max DD ≤ BTC B&H · *(rinominato)*
 
-`src/routes/_authenticated/settings.tsx`:
-- Rimuovere `Switch` per `core_only_mode`, `bear_dca_enabled`, `exclude_fiat_commodity` (e le card relative).
-- Lasciare modificabili: parametri Bear-DCA numerici (threshold, cap, tranche, interval), fee Kraken, capitale.
-- Banner in cima alla sezione strategia: *"🤖 Gli interruttori strategici sono gestiti automaticamente dall'AI Supervisor in base al preset attivo. Vedi `Diagnostica` per lo stato corrente."*
+Nota: i campi nel payload `liveGateChecks` restano gli stessi nomi (`beatsDcaSharpe`, `beatsDcaDrawdown`) ma la **logica server** li ricalcola contro BTC B&H per evitare un breaking change di schema. Le label UI mostrano "BTC B&H".
 
-## 5. Diagnostica — pannello AI Supervisor
+### 2. Server — `src/lib/backtest.functions.ts`
 
-`src/routes/_authenticated/diagnostica.tsx`: nuova card "🤖 AI Supervisor" che mostra:
-- Stato attuale dei 3 flag (badge read-only)
-- Ultima esecuzione + confidence
-- Reasoning testuale dell'ultima decisione
-- Lista `changed_flags` con timestamp
+- `inputSchema`: rimuovo il campo `universe`. Internamente il backtest usa sempre l'**universo completo Kraken** (`CORE_ASSETS + SLEEVE_ASSETS`) che rappresenta lo spazio decisionale che l'AI Supervisor può attivare. Nota: il filtro `core_only_mode` o `exclude_fiat_commodity` è AI-driven a runtime, quindi nel backtest storico simuliamo lo scenario "AI lascia libero accesso" come riferimento.
+- `hashInput`: bump versione a `v5` + rimozione segmento universe → invalida la vecchia cache.
+- `BacktestPayload`: campo `universe` rimosso. (Nessun consumer esterno lo legge oltre alla pagina che sto pulendo.)
+- Tabella `backtest_runs`: la colonna `universe` è `NOT NULL` con default `core_sleeve` (verificato dal codice di upsert). Per non rompere: continuo a passare un valore fisso `"ai_managed"` nell'upsert, senza esporlo in UI. Non serve migrazione.
 
-`getDiagnostics` server fn estesa per includere `ai_supervisor_state`.
+### 3. Server — `src/lib/backtest.server.ts`
 
-## 6. Tool assistente
+- I calcoli `runDcaBenchmark`, `runTrendBtc` e i relativi KPI restano nel motore (potenzialmente utili in diagnostica) ma il payload server li include comunque — la UI semplicemente non li mostra. **Decisione**: per ridurre payload e tempo CPU, **rimuovo** dca / trendCore / trendDca dal `BacktestResult` e dall'`EquityPoint`. Pulizia coerente con l'obiettivo "pulire i dati".
+- Aggiorno `liveGateChecks` per usare `btcKpis` invece di `dcaKpis` come riferimento:
+  - `beatsDcaSharpe` → `strategyKpis.sharpe >= btcKpis.sharpe`
+  - `beatsDcaDrawdown` → `|strategyKpis.maxDD| <= |btcKpis.maxDD|`
+- Tipi `BacktestResult` aggiornati (rimossi `dcaKpis`, `trendCoreKpis`, `trendDcaKpis`).
 
-`src/lib/assistant/tools.server.ts`: in `updateRiskSettings` **rimuovere** dallo schema `core_only_mode`, `bear_dca_enabled`, `exclude_fiat_commodity`. Aggiungere nuovo tool read-only `getAiSupervisorState` per leggere le decisioni recenti. System prompt aggiornato: l'assistente spiega che questi 3 flag sono AI-gestiti e non li tocca.
+### 4. Assistant tools — `src/lib/assistant/tools.server.ts`
 
-## 7. Verifica
+Verifico che `runBacktest` tool (se esposto) non passi più `universe`; se presente lo rimuovo dallo schema e dalla chiamata.
 
-- Trigger manuale del supervisor via `curl_edge_functions` (in realtà `invoke-server-function` per route TanStack) → verifica scrittura `ai_supervisor_state` + diff applicato.
-- Verifica che il cron sia schedulato (`SELECT * FROM cron.job`).
-- Test rapido in UI: cambiare preset da `/strategia` → al prossimo run AI rivaluta.
+---
 
-## Tecnico — file toccati
-- 🆕 `src/routes/api/public/hooks/ai-strategy-supervisor.ts`
-- 🆕 1 migrazione (colonna `ai_supervisor_state`)
-- 🆕 1 cron via insert tool
-- ✏️ `src/lib/diagnostics.functions.ts` (espone `aiSupervisor`)
-- ✏️ `src/routes/_authenticated/diagnostica.tsx` (pannello AI Supervisor)
-- ✏️ `src/routes/_authenticated/settings.tsx` (rimuove i 3 toggle, banner info)
-- ✏️ `src/lib/assistant/tools.server.ts` (rimuove flag dal write tool, aggiunge read tool)
-- ✏️ `src/lib/assistant/system-prompt.server.ts` (nota AI Supervisor)
+## File toccati
 
-## Costo AI
-~24 chiamate/utente/giorno × token strutturato leggero (input ~1.5K, output ~200) → trascurabile su Gemini 3 Flash.
+- `src/routes/_authenticated/strategia.tsx` — UI semplificata
+- `src/lib/backtest.functions.ts` — schema input, hash, payload
+- `src/lib/backtest.server.ts` — rimozione benchmark extra, GO LIVE gate vs BTC
+- `src/lib/assistant/tools.server.ts` — solo se referenzia `universe`
+
+## Verifica
+
+1. Apro `/strategia`, controllo che il form mostri 4 controlli e non più 5.
+2. Run backtest 1y / 3y / 5y su Bilanciato: grafico con 3 linee, 3 card KPI, gate visibile.
+3. Cache invalidata correttamente (hash v5).
+4. Nessun errore TS sul payload (`dca`, `trendCore`, `trendDca` rimossi dall'`EquityPoint` e dalle KPI).
+
+## Fuori scopo
+
+- Nessuna modifica a `historical_ohlc`, `backtest_runs` schema, AI Supervisor o pagine Diagnostica/Settings.
+- Non tocco il motore di esecuzione live.
