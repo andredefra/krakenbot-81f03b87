@@ -69,12 +69,14 @@ function PositionsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Asset</TableHead>
+                    <TableHead>Sleeve</TableHead>
                     <TableHead>Mod.</TableHead>
                     <TableHead className="text-right">Quantità</TableHead>
                     <TableHead className="text-right">Ingresso</TableHead>
                     <TableHead className="text-right">Attuale</TableHead>
                     <TableHead className="text-right">Valore</TableHead>
                     <TableHead className="text-right">uPnL</TableHead>
+                    <TableHead className="text-right">Fee</TableHead>
                     <TableHead className="text-right">Stop</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -84,9 +86,18 @@ function PositionsPage() {
                     const value = cur * Number(p.qty);
                     const pnl = value - Number(p.entry_value);
                     const pnlPct = Number(p.entry_value) > 0 ? (pnl / Number(p.entry_value)) * 100 : 0;
+                    const sleeve = (p.sleeve ?? "satellite") as "core" | "satellite" | "dca";
+                    const sleeveBadge =
+                      sleeve === "core"
+                        ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
+                        : sleeve === "dca"
+                        ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                        : "bg-amber-500/15 text-amber-400 border-amber-500/30";
+                    const sleeveLabel = sleeve === "dca" ? "BEAR-DCA" : sleeve.toUpperCase();
                     return (
                       <TableRow key={p.id}>
                         <TableCell className="font-medium">{p.asset}</TableCell>
+                        <TableCell><Badge variant="outline" className={`text-xs ${sleeveBadge}`}>{sleeveLabel}</Badge></TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">{p.mode.toUpperCase()}</Badge>
                         </TableCell>
@@ -97,6 +108,7 @@ function PositionsPage() {
                         <TableCell className={`text-right tabular ${pnlClass(pnl)}`}>
                           {formatUsd(pnl, { signed: true })} <span className="text-xs opacity-80">({formatPct(pnlPct, { signed: true })})</span>
                         </TableCell>
+                        <TableCell className="text-right tabular text-muted-foreground">{p.fee_paid_usd != null ? formatUsd(Number(p.fee_paid_usd)) : "—"}</TableCell>
                         <TableCell className="text-right tabular text-muted-foreground">{p.stop_price ? formatUsd(Number(p.stop_price)) : "—"}</TableCell>
                       </TableRow>
                     );
