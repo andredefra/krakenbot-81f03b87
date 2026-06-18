@@ -481,7 +481,7 @@ function BacktestSection() {
   );
 }
 
-type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
+type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; sortino: number; trades: number; winRatePct: number; profitFactor: number };
 
 function KpiCard({ title, kpis, highlight }: { title: string; kpis: KpisShape; highlight?: boolean }) {
   return (
