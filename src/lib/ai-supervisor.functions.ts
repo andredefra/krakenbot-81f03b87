@@ -150,7 +150,7 @@ export const applyValidatedProposal = createServerFn({ method: "POST" })
     } as any).eq("id", data.id);
 
     await supabase.from("events_log").insert({
-      user_id: userId, component: "ai-proposals", level: "warning",
+      user_id: userId, component: "ai-proposals", level: "warn",
       message: `Proposta APPLICATA: ${prop.data.title}`,
       payload: { id: data.id, patch } as never,
     });
