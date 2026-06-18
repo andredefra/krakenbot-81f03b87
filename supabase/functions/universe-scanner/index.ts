@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
       if (!uerr) { upserts += 1; if (eligible) eligibleCount += 1; }
     }
 
-    console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d)`);
+    console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d, exclFiatCom=${excludeFiatCommodity})`);
 
     return new Response(JSON.stringify({ ok: true, upserts, eligibleCount, thresholds: { minVol, maxSpread, minAge } }), {
       headers: { ...corsHeaders, "content-type": "application/json" },
