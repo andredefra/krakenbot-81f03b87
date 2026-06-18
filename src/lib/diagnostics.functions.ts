@@ -88,11 +88,11 @@ export const getDiagnostics = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<DiagnosticsPayload> => {
     const { supabase, userId } = context;
 
-    const [diagRes, settingsRes, openRes, eventRes] = await Promise.all([
+    const [diagRes, settingsRes, openRes, eventRes, feesRes] = await Promise.all([
       supabase.from("engine_diagnostics").select("*").eq("user_id", userId).maybeSingle(),
       supabase
         .from("settings")
-        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset")
+        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
@@ -108,6 +108,10 @@ export const getDiagnostics = createServerFn({ method: "GET" })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("positions")
+        .select("fee_paid_usd")
+        .eq("user_id", userId),
     ]);
 
     const diag = diagRes.data as Record<string, unknown> | null;
@@ -118,6 +122,31 @@ export const getDiagnostics = createServerFn({ method: "GET" })
       held?: CoreHolding[];
     };
     const satState = (diag?.satellite_state ?? null) as null | { open?: number; max?: number };
+    const bdState = (diag?.bear_dca_state ?? null) as null | {
+      active?: boolean;
+      deployed_usd?: number;
+      cap_usd?: number;
+      tranches?: number;
+      last_action_at?: string | null;
+    };
+    const settingsRow = settingsRes.data as null | {
+      is_running: boolean;
+      mode: string;
+      max_positions: number;
+      max_satellite_positions: number;
+      regime_filter: string;
+      fg_greed_cap: number;
+      strategy_preset: string;
+      core_only_mode: boolean | null;
+      bear_dca_enabled: boolean | null;
+      exclude_fiat_commodity: boolean | null;
+      bear_dca_fg_threshold: number | null;
+      bear_dca_cap_pct: number | null;
+    };
+    const totalFeesUsd = (feesRes.data ?? []).reduce(
+      (acc, r: { fee_paid_usd: number | null }) => acc + Number(r.fee_paid_usd ?? 0),
+      0,
+    );
 
     return {
       hasSnapshot: !!diag,
@@ -147,11 +176,35 @@ export const getDiagnostics = createServerFn({ method: "GET" })
       },
       satellite: {
         open: satState?.open ?? 0,
-        max: satState?.max ?? (settingsRes.data?.max_satellite_positions ?? 2),
+        max: satState?.max ?? (settingsRow?.max_satellite_positions ?? 2),
+      },
+      bearDca: {
+        enabled: !!settingsRow?.bear_dca_enabled,
+        active: !!bdState?.active,
+        deployedUsd: Number(bdState?.deployed_usd ?? 0),
+        capUsd: Number(bdState?.cap_usd ?? 0),
+        capPct: Number(settingsRow?.bear_dca_cap_pct ?? 0),
+        fgThreshold: Number(settingsRow?.bear_dca_fg_threshold ?? 22),
+        lastActionAt: bdState?.last_action_at ?? null,
+        tranches: Number(bdState?.tranches ?? 0),
       },
       universe: ((diag?.universe_eligible as UniverseRow[]) ?? []),
-      settings: settingsRes.data ?? null,
+      settings: settingsRow
+        ? {
+            is_running: settingsRow.is_running,
+            mode: settingsRow.mode,
+            max_positions: settingsRow.max_positions,
+            max_satellite_positions: settingsRow.max_satellite_positions,
+            regime_filter: settingsRow.regime_filter,
+            fg_greed_cap: settingsRow.fg_greed_cap,
+            strategy_preset: settingsRow.strategy_preset,
+            core_only_mode: !!settingsRow.core_only_mode,
+            bear_dca_enabled: !!settingsRow.bear_dca_enabled,
+            exclude_fiat_commodity: !!settingsRow.exclude_fiat_commodity,
+          }
+        : null,
       openPositions: openRes.count ?? 0,
+      totalFeesUsd,
       lastEngineMessage: eventRes.data?.message ?? null,
       lastEngineAt: eventRes.data?.created_at ?? null,
     };
