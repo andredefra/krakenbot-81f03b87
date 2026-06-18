@@ -158,6 +158,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         capital_reference: z.number().positive().optional(),
         kill_switch_floor: z.number().positive().optional(),
         max_positions: z.number().int().min(1).max(20).optional(),
+        max_satellite_positions: z.number().int().min(0).max(10).optional(),
         max_position_pct: z.number().min(1).max(100).optional(),
         stop_loss_pct: z.number().min(0.1).max(50).optional(),
         trailing_activate_pct: z.number().min(0).max(50).optional(),
@@ -165,7 +166,19 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         take_profit_pct: z.number().min(0.1).max(100).optional(),
         min_target_pct: z.number().min(0).max(50).optional(),
         daily_loss_limit_pct: z.number().min(0.1).max(50).optional(),
+        monthly_trade_cap: z.number().int().min(1).max(50).optional(),
         timeframe: z.enum(["15m", "30m", "1h", "2h", "4h", "1d"]).optional(),
+        // v3 flags & params
+        core_only_mode: z.boolean().optional(),
+        bear_dca_enabled: z.boolean().optional(),
+        exclude_fiat_commodity: z.boolean().optional(),
+        bear_dca_fg_threshold: z.number().int().min(0).max(50).optional(),
+        bear_dca_cap_pct: z.number().min(0).max(100).optional(),
+        bear_dca_tranche_pct: z.number().min(0.1).max(50).optional(),
+        bear_dca_interval_days: z.number().int().min(1).max(60).optional(),
+        taker_fee_pct: z.number().min(0).max(2).optional(),
+        maker_fee_pct: z.number().min(0).max(2).optional(),
+        slippage_pct: z.number().min(0).max(2).optional(),
       }),
       execute: async (patch) => {
         const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
