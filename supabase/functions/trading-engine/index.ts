@@ -470,6 +470,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       positions: satPos.map((p) => ({ asset: p.asset, entry_price: p.entry_price, current_price: p.current_price, qty: p.qty })),
     },
     universe_eligible: universeEligible,
+    bear_dca_state: bdState,
   });
 
   // 13. Snapshot portafoglio finale
