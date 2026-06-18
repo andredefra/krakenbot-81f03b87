@@ -454,12 +454,12 @@ function BacktestSection() {
             })()}
 
             <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
-              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v2)</div>
-              <div>• <strong>Allocazione Core-Satellite</strong>: il core (BTC/ETH) resta investito, lo sleeve satellite fa trading attivo solo per la quota satellite.</div>
-              <div>• <strong>Filtro macro</strong>: se BTC scende sotto SMA{200}, il core esce in stablecoin (rientro al recupero).</div>
-              <div>• <strong>Disciplina commissioni</strong>: target minimo {`+${runMut.data.preset === "conservative" ? 5 : runMut.data.preset === "aggressive" ? 3 : 4}%`}, cooldown e tetto trade mensile applicati.</div>
-              <div>• <strong>Commissioni</strong>: 0.4% per lato (taker Kraken Pro), slippage 0.1% per lato.</div>
-              <div>• <strong>Stop</strong>: max(stop_min, 2×ATR) come da preset; trailing e take-profit parziale applicati.</div>
+              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v3)</div>
+              <div>• <strong>Strategia v3 Core-Led</strong>: core (BTC/ETH) protetto da filtro macro SMA200 BTC; satellite con regole strette.</div>
+              <div>• <strong>Benchmark equi</strong>: oltre a Buy &amp; Hold e S&amp;P 500, includiamo BTC DCA e BTC Trend (SMA200) con/senza Bear-DCA — gli stessi metri usati dal cancello GO LIVE.</div>
+              <div>• <strong>Bear-DCA</strong>: in downtrend con drawdown profondo, accumula tranche fino al tetto (parametri da pagina Rischio).</div>
+              <div>• <strong>Commissioni reali Kraken</strong>: taker e slippage letti dai tuoi settings (default taker 0.40% + slip 0.05%).</div>
+              <div>• <strong>Cancello GO LIVE</strong>: Profit Factor &gt; 1.3, Sharpe &gt; 0.8, Sharpe ≥ DCA, MaxDD ≤ DCA.</div>
               <div className="pt-1 opacity-80">Storico crypto: Binance (storico lungo) + Kraken OHLC recenti. S&amp;P 500: Yahoo/Stooq.</div>
             </div>
 
