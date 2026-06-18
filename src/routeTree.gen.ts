@@ -16,6 +16,7 @@ import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedStrategiaRouteImport } from './routes/_authenticated/strategia'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSentimentRouteImport } from './routes/_authenticated/sentiment'
+import { Route as AuthenticatedProposteRouteImport } from './routes/_authenticated/proposte'
 import { Route as AuthenticatedPositionsRouteImport } from './routes/_authenticated/positions'
 import { Route as AuthenticatedModeRouteImport } from './routes/_authenticated/mode'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
@@ -60,6 +61,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedSentimentRoute = AuthenticatedSentimentRouteImport.update({
   id: '/sentiment',
   path: '/sentiment',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedProposteRoute = AuthenticatedProposteRouteImport.update({
+  id: '/proposte',
+  path: '/proposte',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedPositionsRoute = AuthenticatedPositionsRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
   '/positions': typeof AuthenticatedPositionsRoute
+  '/proposte': typeof AuthenticatedProposteRoute
   '/sentiment': typeof AuthenticatedSentimentRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/strategia': typeof AuthenticatedStrategiaRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
   '/positions': typeof AuthenticatedPositionsRoute
+  '/proposte': typeof AuthenticatedProposteRoute
   '/sentiment': typeof AuthenticatedSentimentRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/strategia': typeof AuthenticatedStrategiaRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mode': typeof AuthenticatedModeRoute
   '/_authenticated/positions': typeof AuthenticatedPositionsRoute
+  '/_authenticated/proposte': typeof AuthenticatedProposteRoute
   '/_authenticated/sentiment': typeof AuthenticatedSentimentRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/strategia': typeof AuthenticatedStrategiaRoute
@@ -194,6 +203,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/mode'
     | '/positions'
+    | '/proposte'
     | '/sentiment'
     | '/settings'
     | '/strategia'
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/mode'
     | '/positions'
+    | '/proposte'
     | '/sentiment'
     | '/settings'
     | '/strategia'
@@ -233,6 +244,7 @@ export interface FileRouteTypes {
     | '/_authenticated/logs'
     | '/_authenticated/mode'
     | '/_authenticated/positions'
+    | '/_authenticated/proposte'
     | '/_authenticated/sentiment'
     | '/_authenticated/settings'
     | '/_authenticated/strategia'
@@ -299,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/sentiment'
       fullPath: '/sentiment'
       preLoaderRoute: typeof AuthenticatedSentimentRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/proposte': {
+      id: '/_authenticated/proposte'
+      path: '/proposte'
+      fullPath: '/proposte'
+      preLoaderRoute: typeof AuthenticatedProposteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/positions': {
@@ -391,6 +410,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedModeRoute: typeof AuthenticatedModeRoute
   AuthenticatedPositionsRoute: typeof AuthenticatedPositionsRoute
+  AuthenticatedProposteRoute: typeof AuthenticatedProposteRoute
   AuthenticatedSentimentRoute: typeof AuthenticatedSentimentRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStrategiaRoute: typeof AuthenticatedStrategiaRoute
@@ -406,6 +426,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedModeRoute: AuthenticatedModeRoute,
   AuthenticatedPositionsRoute: AuthenticatedPositionsRoute,
+  AuthenticatedProposteRoute: AuthenticatedProposteRoute,
   AuthenticatedSentimentRoute: AuthenticatedSentimentRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStrategiaRoute: AuthenticatedStrategiaRoute,

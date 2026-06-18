@@ -20,6 +20,8 @@ import {
   Stethoscope,
   Target,
   LogOut,
+  Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FloatingChat } from "@/components/assistant/FloatingChat";
