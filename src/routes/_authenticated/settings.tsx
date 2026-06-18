@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+
 import { toast } from "sonner";
 import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
 import { detectPreset, getPreset, type PresetId } from "@/lib/strategy-presets";
