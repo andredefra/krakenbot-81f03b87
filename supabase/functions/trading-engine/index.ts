@@ -478,7 +478,8 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     .from("positions").select("entry_value,qty,current_price,entry_price,sleeve")
     .eq("user_id", userId).eq("status", "open");
   const finalPosValue = (finalPos ?? []).reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
-  const finalCore = (finalPos ?? []).filter((p) => p.sleeve === "core").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
+  // DCA (Bear-DCA accumulator) viene contato come "core" nell'allocazione (è BTC accumulato)
+  const finalCore = (finalPos ?? []).filter((p) => p.sleeve === "core" || p.sleeve === "dca").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
   const finalSat = (finalPos ?? []).filter((p) => (p.sleeve ?? "satellite") === "satellite").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
   const finalInvested = (finalPos ?? []).reduce((s, p) => s + Number(p.entry_value), 0);
   const finalCash = Math.max(0, settings.capital_reference + realizedToday - finalInvested);
@@ -490,7 +491,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     core_value: finalCore, satellite_value: finalSat,
   });
 
-  await log(supa, userId, "info", "trading-engine", `Ciclo v2 completato totale ${finalTotal.toFixed(2)} (core ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v3 completato totale ${finalTotal.toFixed(2)} (core+dca ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
 }
 
 // Helpers --------------------------------------------------------------------
