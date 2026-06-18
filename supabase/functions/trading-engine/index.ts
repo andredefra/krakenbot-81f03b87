@@ -493,16 +493,20 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
 }
 
 // Helpers --------------------------------------------------------------------
-async function closePosition(supa: ReturnType<typeof createClient>, userId: string, settings: Settings, p: Position, price: number, reason: string) {
+async function closePosition(supa: ReturnType<typeof createClient>, userId: string, settings: Settings, p: Position, price: number, reason: string, takerFeePct = 0.4) {
   const exitValue = price * p.qty;
-  const pnl = exitValue - Number(p.entry_value);
+  const exitFee = exitValue * (takerFeePct / 100);
+  const entryFee = Number(p.fee_paid_usd ?? 0);
+  const totalFee = entryFee + exitFee;
+  const pnl = exitValue - Number(p.entry_value) - exitFee; // net of exit fee
   const pnlPct = (pnl / Number(p.entry_value)) * 100;
   const closedAt = new Date().toISOString();
   await supa.from("positions").update({
     status: "closed", exit_price: price, exit_value: exitValue,
     pnl, pnl_pct: pnlPct, exit_reason: reason, closed_at: closedAt,
+    fee_paid_usd: totalFee,
   }).eq("id", p.id);
-  await log(supa, userId, "info", "trading-engine", `Chiuso ${p.asset} (${reason}) P/L ${pnl.toFixed(2)}`);
+  await log(supa, userId, "info", "trading-engine", `Chiuso ${p.asset} (${reason}) P/L ${pnl.toFixed(2)} fee ${totalFee.toFixed(2)}`);
   await sendTelegram(fmtClose({
     mode: settings.mode, asset: p.asset, win: pnl >= 0,
     entryValue: Number(p.entry_value), entryPrice: Number(p.entry_price),
