@@ -6,6 +6,25 @@ import { createLovableAiGatewayProvider } from "@/lib/assistant/ai-gateway.serve
 import { buildSystemPrompt } from "@/lib/assistant/system-prompt.server";
 import { buildAssistantTools } from "@/lib/assistant/tools.server";
 
+// Best-effort waitUntil: keeps async work alive after the response is returned
+// on Cloudflare Workers. In dev (Node) the promise simply runs to completion.
+function keepAlive(p: Promise<unknown>) {
+  try {
+    // Dynamic require so the dev bundle doesn't try to resolve cloudflare:workers
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const mod = require("cloudflare:workers") as {
+      getRequestContext?: () => { ctx: { waitUntil: (p: Promise<unknown>) => void } };
+    };
+    mod.getRequestContext?.().ctx.waitUntil(p);
+    return;
+  } catch {
+    // fall through
+  }
+  // In Node the event loop keeps the promise alive; swallow rejections so
+  // an unhandled rejection doesn't crash the dev server.
+  p.catch((err) => console.error("[chat persist]", err));
+}
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
@@ -25,6 +44,26 @@ export const Route = createFileRoute("/api/chat")({
         const key = process.env.LOVABLE_API_KEY;
         if (!key) return new Response("LOVABLE_API_KEY missing", { status: 500 });
 
+        // 1) Persist the latest user message SYNCHRONOUSLY before starting the
+        // stream. Otherwise, in serverless runtimes the worker can be torn
+        // down before onFinish completes and the message is lost.
+        const lastUser = [...messages].reverse().find((m) => m.role === "user");
+        if (lastUser) {
+          const { error } = await supabase.from("chat_messages").upsert(
+            {
+              user_id: userId,
+              message_id: lastUser.id,
+              role: lastUser.role,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              parts: lastUser.parts as any,
+            },
+            { onConflict: "user_id,message_id" },
+          );
+          if (error) console.error("[chat persist user]", error);
+        }
+
+        const knownIds = new Set(messages.map((m) => m.id));
+
         const gateway = createLovableAiGatewayProvider(key);
         const model = gateway("google/gemini-3-flash-preview");
 
@@ -40,24 +79,27 @@ export const Route = createFileRoute("/api/chat")({
 
         return result.toUIMessageStreamResponse({
           originalMessages: messages,
-          onFinish: async ({ messages: finalMessages }) => {
-            // Persist any new messages (idempotent on (user_id, message_id))
-            try {
-              const rows = finalMessages.map((m) => ({
+          onFinish: ({ messages: finalMessages }) => {
+            // 2) Persist any NEW messages (assistant + tool parts) and keep the
+            // promise alive past the response with waitUntil.
+            const newRows = finalMessages
+              .filter((m) => !knownIds.has(m.id))
+              .map((m) => ({
                 user_id: userId,
                 message_id: m.id,
                 role: m.role,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 parts: m.parts as any,
               }));
-              if (rows.length) {
-                await supabase.from("chat_messages").upsert(rows, {
-                  onConflict: "user_id,message_id",
-                });
-              }
-            } catch (err) {
-              console.error("[chat persist]", err);
-            }
+            if (!newRows.length) return;
+            keepAlive(
+              (async () => {
+                const { error } = await supabase
+                  .from("chat_messages")
+                  .upsert(newRows, { onConflict: "user_id,message_id" });
+                if (error) console.error("[chat persist assistant]", error);
+              })(),
+            );
           },
         });
       },
