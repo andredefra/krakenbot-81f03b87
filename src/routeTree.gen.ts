@@ -24,6 +24,7 @@ import { Route as AuthenticatedDiagnosticaRouteImport } from './routes/_authenti
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedBilancioRouteImport } from './routes/_authenticated/bilancio'
 import { Route as AuthenticatedAssistantRouteImport } from './routes/_authenticated/assistant'
+import { Route as ApiPublicHooksAiStrategySupervisorRouteImport } from './routes/api/public/hooks/ai-strategy-supervisor'
 import { Route as ApiPublicCronTaxRemindersRouteImport } from './routes/api/public/cron/tax-reminders'
 
 const AuthRoute = AuthRouteImport.update({
@@ -101,6 +102,12 @@ const AuthenticatedAssistantRoute = AuthenticatedAssistantRouteImport.update({
   path: '/assistant',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicHooksAiStrategySupervisorRoute =
+  ApiPublicHooksAiStrategySupervisorRouteImport.update({
+    id: '/api/public/hooks/ai-strategy-supervisor',
+    path: '/api/public/hooks/ai-strategy-supervisor',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronTaxRemindersRoute =
   ApiPublicCronTaxRemindersRouteImport.update({
     id: '/api/public/cron/tax-reminders',
@@ -124,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
+  '/api/public/hooks/ai-strategy-supervisor': typeof ApiPublicHooksAiStrategySupervisorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -141,6 +149,7 @@ export interface FileRoutesByTo {
   '/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
+  '/api/public/hooks/ai-strategy-supervisor': typeof ApiPublicHooksAiStrategySupervisorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -160,6 +169,7 @@ export interface FileRoutesById {
   '/_authenticated/strategia': typeof AuthenticatedStrategiaRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/cron/tax-reminders': typeof ApiPublicCronTaxRemindersRoute
+  '/api/public/hooks/ai-strategy-supervisor': typeof ApiPublicHooksAiStrategySupervisorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
+    | '/api/public/hooks/ai-strategy-supervisor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
+    | '/api/public/hooks/ai-strategy-supervisor'
   id:
     | '__root__'
     | '/'
@@ -214,6 +226,7 @@ export interface FileRouteTypes {
     | '/_authenticated/strategia'
     | '/api/chat'
     | '/api/public/cron/tax-reminders'
+    | '/api/public/hooks/ai-strategy-supervisor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -222,6 +235,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiPublicCronTaxRemindersRoute: typeof ApiPublicCronTaxRemindersRoute
+  ApiPublicHooksAiStrategySupervisorRoute: typeof ApiPublicHooksAiStrategySupervisorRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -331,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssistantRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/hooks/ai-strategy-supervisor': {
+      id: '/api/public/hooks/ai-strategy-supervisor'
+      path: '/api/public/hooks/ai-strategy-supervisor'
+      fullPath: '/api/public/hooks/ai-strategy-supervisor'
+      preLoaderRoute: typeof ApiPublicHooksAiStrategySupervisorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/tax-reminders': {
       id: '/api/public/cron/tax-reminders'
       path: '/api/public/cron/tax-reminders'
@@ -378,6 +399,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ApiChatRoute: ApiChatRoute,
   ApiPublicCronTaxRemindersRoute: ApiPublicCronTaxRemindersRoute,
+  ApiPublicHooksAiStrategySupervisorRoute:
+    ApiPublicHooksAiStrategySupervisorRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
