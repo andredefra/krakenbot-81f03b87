@@ -99,7 +99,22 @@ export const runBacktestFn = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => inputSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const input_hash = hashInput(data);
+
+    // Load user-specific fees + bear-DCA params from settings (v3)
+    const settingsRes = await supabase
+      .from("settings")
+      .select("maker_fee_pct, taker_fee_pct, slippage_pct, bear_dca_enabled, bear_dca_fg_threshold, bear_dca_cap_pct, bear_dca_tranche_pct, bear_dca_interval_days")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const s = (settingsRes.data ?? {}) as Record<string, number | boolean | null>;
+    const feePct = Number(s.taker_fee_pct ?? 0.4);
+    const slippagePct = Number(s.slippage_pct ?? 0.05);
+    const bearEnabled = Boolean(s.bear_dca_enabled ?? true);
+    const bearCapPct = Number(s.bear_dca_cap_pct ?? 30);
+    const bearTranchePct = Number(s.bear_dca_tranche_pct ?? 5);
+    const bearIntervalDays = Number(s.bear_dca_interval_days ?? 14);
+
+    const input_hash = `${hashInput(data)}|fee${feePct}|slip${slippagePct}|bd${bearEnabled ? 1 : 0}|${bearCapPct}/${bearTranchePct}/${bearIntervalDays}`;
 
     // Check cache
     const cached = await supabase
@@ -122,12 +137,9 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     since.setFullYear(since.getFullYear() - data.years);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    // Load BTC, SPX, traded universe
     const tradedSyms = data.universe === "core" ? CORE_ASSETS : [...CORE_ASSETS, ...SLEEVE_ASSETS];
     const allSyms = ["BTC", "SPX", ...tradedSyms];
 
-    // Fetch per-symbol to bypass PostgREST max-rows cap (a single .in() query
-    // sorted by date returns the oldest rows first — SPX dominates and BTC/alts get truncated).
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
     const ohlcResults = await Promise.all(
       allSyms.map((sym) => fetchOhlcAllPages(supabase, sym, sinceStr)),
@@ -162,27 +174,39 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         take_profit_pct: presetMeta.values.take_profit_pct,
         daily_loss_limit_pct: presetMeta.values.daily_loss_limit_pct,
         fg_greed_cap: presetMeta.values.fg_greed_cap,
-        // v2: il filtro macro per il core è BTC vs SMA200 (vedi STRATEGIA.md v2 §3.1)
         regime_filter: "btc_sma200",
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
       fg,
       assets,
-      feePct: 0.4,
-      slippagePct: 0.1,
+      feePct,
+      slippagePct,
+      bearDca: {
+        enabled: bearEnabled,
+        ddTrigger: 0.25,
+        intervalDays: bearIntervalDays,
+        tranchePct: bearTranchePct,
+        maxPct: bearCapPct,
+        ddWindow: 90,
+        smaPeriod: 200,
+      },
     });
 
-    // Downsample equity to ~250 points for chart payload
     const step = Math.max(1, Math.floor(result.equity.length / 250));
     const downEq = result.equity.filter((_, i) => i % step === 0 || i === result.equity.length - 1);
 
-    const payload = {
+    const payload: BacktestPayload = {
       cached: false,
       equity: downEq,
       strategyKpis: result.strategyKpis,
       btcKpis: result.btcKpis,
       spxKpis: result.spxKpis,
+      dcaKpis: result.dcaKpis,
+      trendCoreKpis: result.trendCoreKpis,
+      trendDcaKpis: result.trendDcaKpis,
+      passesLiveGate: result.passesLiveGate,
+      liveGateChecks: result.liveGateChecks,
       tradesCount: result.tradeLog.length,
       universe: data.universe,
       preset: data.preset,
@@ -191,7 +215,15 @@ export const runBacktestFn = createServerFn({ method: "POST" })
 
     await supabase
       .from("backtest_runs")
-      .upsert({ user_id: userId, input_hash, preset: data.preset, years: data.years, universe: data.universe, result: payload });
+      .upsert({
+        user_id: userId,
+        input_hash,
+        preset: data.preset,
+        years: data.years,
+        universe: data.universe,
+        result: payload,
+        passes_live_gate: result.passesLiveGate,
+      });
 
     return payload;
   });
