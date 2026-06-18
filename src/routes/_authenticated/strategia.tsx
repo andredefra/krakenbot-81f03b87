@@ -61,7 +61,7 @@ function StrategiaPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Strategia</h1>
         <p className="text-sm text-muted-foreground">
-          Strategia v2 <strong>Core-Satellite</strong> su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
+          Strategia v3 <strong>Core-Led</strong> con Bear-DCA su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
           <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop. Solo i nuovi useranno il preset.</span>
         </p>
       </div>
