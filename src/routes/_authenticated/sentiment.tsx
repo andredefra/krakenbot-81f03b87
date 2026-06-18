@@ -78,9 +78,9 @@ function SentimentPage() {
           <div>
             <div className="font-medium text-foreground">Perché i pesi non sono più editabili?</div>
             <div className="text-muted-foreground mt-0.5">
-              La Strategia v2 sceglie da sé l'intensità di ciascuna fonte in base al profilo di rischio.
-              Conservativo → più peso al Fear &amp; Greed (gate forte). Aggressivo → più peso al social (cogliere momentum).
-              Per cambiarli, cambia preset dalla pagina <strong>Strategia</strong>.
+              La Strategia v3 Core-Led deriva i pesi dal preset attivo. Fear &amp; Greed è anche il <strong>gate del Bear-DCA</strong> (sotto la soglia <code>bear_dca_fg_threshold</code>, default 22, accumula tranche BTC).
+              LunarCrush/Santiment confermano i <strong>satellite</strong> (cap mensile <code>monthly_trade_cap</code>, filtro fiat/oro se attivo).
+              Per cambiare i pesi, cambia preset dalla pagina <strong>Strategia</strong>.
             </div>
           </div>
         </CardContent>
