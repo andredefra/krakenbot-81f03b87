@@ -15,6 +15,8 @@ export type PresetParams = {
   daily_loss_limit_pct: number;
   fg_greed_cap: number;
   regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
+  core_pct: number;            // 0..1, quota allocata al core buy & hold
+  core_assets: string[];       // simboli del core sleeve (es. BTC, ETH)
 };
 
 export type BearDcaParams = {
