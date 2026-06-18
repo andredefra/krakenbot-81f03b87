@@ -20,6 +20,7 @@ import { Route as AuthenticatedPositionsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedModeRouteImport } from './routes/_authenticated/mode'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedDiarioRouteImport } from './routes/_authenticated/diario'
 import { Route as AuthenticatedDiagnosticaRouteImport } from './routes/_authenticated/diagnostica'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedBilancioRouteImport } from './routes/_authenticated/bilancio'
@@ -81,6 +82,11 @@ const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDiarioRoute = AuthenticatedDiarioRouteImport.update({
+  id: '/diario',
+  path: '/diario',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDiagnosticaRoute =
   AuthenticatedDiagnosticaRouteImport.update({
     id: '/diagnostica',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/bilancio': typeof AuthenticatedBilancioRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diagnostica': typeof AuthenticatedDiagnosticaRoute
+  '/diario': typeof AuthenticatedDiarioRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/bilancio': typeof AuthenticatedBilancioRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diagnostica': typeof AuthenticatedDiagnosticaRoute
+  '/diario': typeof AuthenticatedDiarioRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mode': typeof AuthenticatedModeRoute
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/_authenticated/bilancio': typeof AuthenticatedBilancioRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/diagnostica': typeof AuthenticatedDiagnosticaRoute
+  '/_authenticated/diario': typeof AuthenticatedDiarioRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mode': typeof AuthenticatedModeRoute
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/bilancio'
     | '/dashboard'
     | '/diagnostica'
+    | '/diario'
     | '/history'
     | '/logs'
     | '/mode'
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/bilancio'
     | '/dashboard'
     | '/diagnostica'
+    | '/diario'
     | '/history'
     | '/logs'
     | '/mode'
@@ -217,6 +228,7 @@ export interface FileRouteTypes {
     | '/_authenticated/bilancio'
     | '/_authenticated/dashboard'
     | '/_authenticated/diagnostica'
+    | '/_authenticated/diario'
     | '/_authenticated/history'
     | '/_authenticated/logs'
     | '/_authenticated/mode'
@@ -317,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/diario': {
+      id: '/_authenticated/diario'
+      path: '/diario'
+      fullPath: '/diario'
+      preLoaderRoute: typeof AuthenticatedDiarioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/diagnostica': {
       id: '/_authenticated/diagnostica'
       path: '/diagnostica'
@@ -367,6 +386,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBilancioRoute: typeof AuthenticatedBilancioRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDiagnosticaRoute: typeof AuthenticatedDiagnosticaRoute
+  AuthenticatedDiarioRoute: typeof AuthenticatedDiarioRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedModeRoute: typeof AuthenticatedModeRoute
@@ -381,6 +401,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBilancioRoute: AuthenticatedBilancioRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDiagnosticaRoute: AuthenticatedDiagnosticaRoute,
+  AuthenticatedDiarioRoute: AuthenticatedDiarioRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedModeRoute: AuthenticatedModeRoute,
