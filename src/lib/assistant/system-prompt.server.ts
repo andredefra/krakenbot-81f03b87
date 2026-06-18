@@ -1,5 +1,6 @@
 import STRATEGIA from "./STRATEGIA.md?raw";
 import BUILD_SPEC from "./BUILD_SPEC.md?raw";
+import BACKTEST from "./BACKTEST_v3.md?raw";
 
 export function buildSystemPrompt(): string {
   return `Sei "Crypto Bot Assistant", il co-pilota personale di Andrea per un bot di paper-trading su Kraken.
@@ -21,6 +22,9 @@ ${STRATEGIA}
 
 === BUILD_SPEC.md ===
 ${BUILD_SPEC}
+
+=== BACKTEST_v3.md ===
+${BACKTEST}
 === fine documenti ===
 
 Se l'utente chiede qualcosa che contraddice i documenti, segnalalo e proponi l'opzione conforme.`;

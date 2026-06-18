@@ -467,19 +467,27 @@ export type Database = {
       settings: {
         Row: {
           asset_universe: Json
+          bear_dca_cap_pct: number
+          bear_dca_enabled: boolean
+          bear_dca_fg_threshold: number
+          bear_dca_interval_days: number
+          bear_dca_tranche_pct: number
           capital_reference: number
           cooldown_hours: number
+          core_only_mode: boolean
           core_satellite_split: Json
           core_weights: Json
           created_at: string
           daily_loss_limit_pct: number
           enabled_sentiment_sources: Json
+          exclude_fiat_commodity: boolean
           fg_greed_cap: number
           id: string
           is_running: boolean
           kill_switch_floor: number
           loss_carryforward_cents: number
           macro_ma_period: number
+          maker_fee_pct: number
           max_position_pct: number
           max_positions: number
           max_satellite_positions: number
@@ -495,11 +503,13 @@ export type Database = {
           regime_filter: string
           risk_per_trade_pct: number
           sentiment_weights: Json
+          slippage_pct: number
           stop_atr_mult: number
           stop_loss_pct: number
           stop_min_pct: number
           strategy_preset: string
           take_profit_pct: number
+          taker_fee_pct: number
           tax_country: string
           tax_reserve_cents: number
           timeframe: string
@@ -510,19 +520,27 @@ export type Database = {
         }
         Insert: {
           asset_universe?: Json
+          bear_dca_cap_pct?: number
+          bear_dca_enabled?: boolean
+          bear_dca_fg_threshold?: number
+          bear_dca_interval_days?: number
+          bear_dca_tranche_pct?: number
           capital_reference?: number
           cooldown_hours?: number
+          core_only_mode?: boolean
           core_satellite_split?: Json
           core_weights?: Json
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
+          exclude_fiat_commodity?: boolean
           fg_greed_cap?: number
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
           loss_carryforward_cents?: number
           macro_ma_period?: number
+          maker_fee_pct?: number
           max_position_pct?: number
           max_positions?: number
           max_satellite_positions?: number
@@ -538,11 +556,13 @@ export type Database = {
           regime_filter?: string
           risk_per_trade_pct?: number
           sentiment_weights?: Json
+          slippage_pct?: number
           stop_atr_mult?: number
           stop_loss_pct?: number
           stop_min_pct?: number
           strategy_preset?: string
           take_profit_pct?: number
+          taker_fee_pct?: number
           tax_country?: string
           tax_reserve_cents?: number
           timeframe?: string
@@ -553,19 +573,27 @@ export type Database = {
         }
         Update: {
           asset_universe?: Json
+          bear_dca_cap_pct?: number
+          bear_dca_enabled?: boolean
+          bear_dca_fg_threshold?: number
+          bear_dca_interval_days?: number
+          bear_dca_tranche_pct?: number
           capital_reference?: number
           cooldown_hours?: number
+          core_only_mode?: boolean
           core_satellite_split?: Json
           core_weights?: Json
           created_at?: string
           daily_loss_limit_pct?: number
           enabled_sentiment_sources?: Json
+          exclude_fiat_commodity?: boolean
           fg_greed_cap?: number
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
           loss_carryforward_cents?: number
           macro_ma_period?: number
+          maker_fee_pct?: number
           max_position_pct?: number
           max_positions?: number
           max_satellite_positions?: number
@@ -581,11 +609,13 @@ export type Database = {
           regime_filter?: string
           risk_per_trade_pct?: number
           sentiment_weights?: Json
+          slippage_pct?: number
           stop_atr_mult?: number
           stop_loss_pct?: number
           stop_min_pct?: number
           strategy_preset?: string
           take_profit_pct?: number
+          taker_fee_pct?: number
           tax_country?: string
           tax_reserve_cents?: number
           timeframe?: string
