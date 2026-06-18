@@ -268,26 +268,16 @@ function SettingsPage() {
             </Card>
           ))}
 
-          <Card>
+          <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
-              <CardTitle className="text-base">Interruttori v3</CardTitle>
-              <CardDescription>Toggle che modificano il comportamento globale del bot.</CardDescription>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" /> Interruttori strategici — gestiti dall'AI
+              </CardTitle>
+              <CardDescription>
+                <strong>core_only_mode</strong>, <strong>bear_dca_enabled</strong> e <strong>exclude_fiat_commodity</strong> sono decisi automaticamente ogni ora dall'<em>AI Supervisor</em> in base al preset attivo (Conservative/Balanced/Aggressive) e alle condizioni di mercato live (regime macro, F&G, drawdown).
+                Stato corrente e motivazione visibili in <Link to="/diagnostica" className="text-primary underline">Diagnostica</Link>.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {TOGGLE_FIELDS.map((tg) => (
-                <div key={tg.key} className="flex items-start justify-between gap-4 py-1">
-                  <div className="flex-1">
-                    <Label htmlFor={tg.key} className="cursor-pointer">{tg.label}</Label>
-                    {tg.help && <p className="text-xs text-muted-foreground mt-0.5">{tg.help}</p>}
-                  </div>
-                  <Switch
-                    id={tg.key}
-                    checked={toggles[tg.key] ?? false}
-                    onCheckedChange={(v) => setToggles((s) => ({ ...s, [tg.key]: v }))}
-                  />
-                </div>
-              ))}
-            </CardContent>
           </Card>
 
           <Card>
