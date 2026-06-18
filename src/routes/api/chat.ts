@@ -1,29 +1,12 @@
 // POST /api/chat — streaming chat endpoint backed by Lovable AI Gateway.
 import { createFileRoute } from "@tanstack/react-router";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { convertToModelMessages, createIdGenerator, streamText, type UIMessage } from "ai";
 import { verifyBearer } from "@/lib/assistant/auth.server";
 import { createLovableAiGatewayProvider } from "@/lib/assistant/ai-gateway.server";
 import { buildSystemPrompt } from "@/lib/assistant/system-prompt.server";
 import { buildAssistantTools } from "@/lib/assistant/tools.server";
 
-// Best-effort waitUntil: keeps async work alive after the response is returned
-// on Cloudflare Workers. In dev (Node) the promise simply runs to completion.
-function keepAlive(p: Promise<unknown>) {
-  try {
-    // Dynamic require so the dev bundle doesn't try to resolve cloudflare:workers
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-    const mod = require("cloudflare:workers") as {
-      getRequestContext?: () => { ctx: { waitUntil: (p: Promise<unknown>) => void } };
-    };
-    mod.getRequestContext?.().ctx.waitUntil(p);
-    return;
-  } catch {
-    // fall through
-  }
-  // In Node the event loop keeps the promise alive; swallow rejections so
-  // an unhandled rejection doesn't crash the dev server.
-  p.catch((err) => console.error("[chat persist]", err));
-}
+const generateAssistantId = createIdGenerator({ prefix: "asst", size: 16 });
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -79,27 +62,32 @@ export const Route = createFileRoute("/api/chat")({
 
         return result.toUIMessageStreamResponse({
           originalMessages: messages,
-          onFinish: ({ messages: finalMessages }) => {
-            // 2) Persist any NEW messages (assistant + tool parts) and keep the
-            // promise alive past the response with waitUntil.
-            const newRows = finalMessages
-              .filter((m) => !knownIds.has(m.id))
-              .map((m) => ({
-                user_id: userId,
-                message_id: m.id,
-                role: m.role,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                parts: m.parts as any,
-              }));
-            if (!newRows.length) return;
-            keepAlive(
-              (async () => {
-                const { error } = await supabase
-                  .from("chat_messages")
-                  .upsert(newRows, { onConflict: "user_id,message_id" });
-                if (error) console.error("[chat persist assistant]", error);
-              })(),
-            );
+          // Give every assistant response a stable, unique id. Without this,
+          // assistant rows are saved with an empty message_id and overwrite
+          // each other via the (user_id, message_id) unique index.
+          generateMessageId: generateAssistantId,
+          // Await persistence inside the stream's flush so the worker stays
+          // alive until the upsert completes. The AI SDK awaits onFinish
+          // before closing the stream.
+          onFinish: async ({ messages: finalMessages }) => {
+            try {
+              const newRows = finalMessages
+                .filter((m) => !knownIds.has(m.id) && m.id)
+                .map((m) => ({
+                  user_id: userId,
+                  message_id: m.id,
+                  role: m.role,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  parts: m.parts as any,
+                }));
+              if (!newRows.length) return;
+              const { error } = await supabase
+                .from("chat_messages")
+                .upsert(newRows, { onConflict: "user_id,message_id" });
+              if (error) console.error("[chat persist assistant]", error);
+            } catch (err) {
+              console.error("[chat persist assistant] threw", err);
+            }
           },
         });
       },
