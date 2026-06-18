@@ -40,15 +40,29 @@ export function AssistantChat({ className }: { className?: string }) {
     id: CHAT_ID,
     transport,
     onError: (err) => toast.error(err.message ?? "Errore chat"),
+    onFinish: () => {
+      // After the assistant finishes, refetch the persisted history so the
+      // next mount (e.g. after navigating away) shows the latest exchange.
+      qc.invalidateQueries({ queryKey: ["chat-history"] });
+    },
   });
 
-  const loadedRef = useRef(false);
+  // Sync persisted history into the chat whenever fresh data arrives AND we
+  // are not actively streaming. A ref-gate would freeze the UI on the first
+  // (possibly stale/empty) cache snapshot.
+  const isStreaming = status === "submitted" || status === "streaming";
   useEffect(() => {
-    if (!loadedRef.current && historyQ.data?.messages) {
-      setMessages(historyQ.data.messages as UIMessage[]);
-      loadedRef.current = true;
-    }
-  }, [historyQ.data, setMessages]);
+    if (isStreaming) return;
+    const persisted = historyQ.data?.messages as UIMessage[] | undefined;
+    if (!persisted) return;
+    const sameLength = persisted.length === messages.length;
+    const sameLast =
+      sameLength &&
+      (persisted[persisted.length - 1]?.id ?? "") ===
+        (messages[messages.length - 1]?.id ?? "");
+    if (sameLength && sameLast) return;
+    setMessages(persisted);
+  }, [historyQ.data, isStreaming, messages, setMessages]);
 
   const clear = useMutation({
     mutationFn: () => clearChatHistory({ data: {} }),
@@ -65,7 +79,6 @@ export function AssistantChat({ className }: { className?: string }) {
     textareaRef.current?.focus();
   }, []);
 
-  const isStreaming = status === "submitted" || status === "streaming";
 
   return (
     <div className={`flex flex-col h-full min-h-0 bg-background ${className ?? ""}`}>
