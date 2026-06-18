@@ -114,6 +114,43 @@ export function buildAssistantTools(supabase: DB, userId: string) {
       },
     }),
 
+    getDiagnostics: tool({
+      description: "Stato completo dell'engine v3: regime macro/meso, sleeve Core (holdings + target), conteggio satellite, stato Bear-DCA (attivo/deployato/cap), universe eligible, fee totali pagate, flag Core-Only/Bear-DCA/filtro fiat.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const [diagRes, settingsRes, openRes, feesRes] = await Promise.all([
+          supabase.from("engine_diagnostics").select("*").eq("user_id", userId).maybeSingle(),
+          supabase.from("settings").select("is_running,mode,strategy_preset,max_satellite_positions,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct,bear_dca_tranche_pct,bear_dca_interval_days,taker_fee_pct,maker_fee_pct,slippage_pct,min_target_pct,monthly_trade_cap").eq("user_id", userId).maybeSingle(),
+          supabase.from("positions").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "open"),
+          supabase.from("positions").select("fee_paid_usd,sleeve").eq("user_id", userId),
+        ]);
+        const totalFees = (feesRes.data ?? []).reduce((a, r) => a + Number(r.fee_paid_usd ?? 0), 0);
+        return {
+          diagnostics: diagRes.data ?? null,
+          settings: settingsRes.data ?? null,
+          open_positions_count: openRes.count ?? 0,
+          total_fees_usd: totalFees,
+        };
+      },
+    }),
+
+    getLatestBacktest: tool({
+      description: "Ultimo backtest v3 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC DCA).",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { data, error } = await supabase
+          .from("backtest_runs")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data ?? { note: "Nessun backtest ancora eseguito." };
+      },
+    }),
+
+
     // -------------------- WRITE TOOLS --------------------
     updateRiskSettings: tool({
       description: "Modifica uno o più parametri di rischio. Passa SOLO i campi da cambiare. Prima di chiamarlo devi spiegare in chat cosa stai per cambiare e perché, e attendere conferma esplicita dell'utente.",
