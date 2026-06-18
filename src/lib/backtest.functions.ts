@@ -172,6 +172,8 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         daily_loss_limit_pct: presetMeta.values.daily_loss_limit_pct,
         fg_greed_cap: presetMeta.values.fg_greed_cap,
         regime_filter: "btc_sma200",
+        core_pct: presetMeta.values.core_satellite_split.core,
+        core_assets: CORE_ASSETS,
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
