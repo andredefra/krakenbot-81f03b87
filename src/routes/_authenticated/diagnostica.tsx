@@ -243,6 +243,33 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
         </CardContent>
       </Card>
 
+      {/* Ultime regole automatiche */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Regole automatiche — ultimi cambi flag</CardTitle>
+          <CardDescription>I 3 flag meccanici sono decisi da regole esplicite. Tutto il resto richiede approvazione umana via <code>Proposte</code>.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {flagsQ.isLoading ? <Skeleton className="h-20 w-full" /> : (flagsQ.data ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nessun cambio registrato. I flag restano allo stato corrente finché una regola non scatta.</div>
+          ) : (
+            <div className="space-y-1.5 text-sm">
+              {(flagsQ.data ?? []).map((c) => (
+                <div key={c.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
+                  <Badge variant="outline" className="text-xs shrink-0">{c.flag}</Badge>
+                  <span className="text-muted-foreground text-xs">
+                    {c.from_value ? "ON" : "OFF"} → <span className="font-semibold text-foreground">{c.to_value ? "ON" : "OFF"}</span>
+                  </span>
+                  <span className="text-xs flex-1">{c.rule_triggered}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{new Date(c.created_at).toLocaleString("it-IT")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+
       {/* Bot status */}
       <Card>
         <CardHeader><CardTitle className="text-base">Stato bot</CardTitle></CardHeader>
