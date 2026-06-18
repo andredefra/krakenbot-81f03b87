@@ -148,7 +148,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
               message: changed.length === 0
                 ? `Nessun cambio (${decision.confidence}) — ${decision.reasoning.slice(0, 200)}`
                 : `Cambiati ${changed.join(", ")} (${decision.confidence}) — ${decision.reasoning.slice(0, 200)}`,
-              payload: { decision: ai_supervisor_state.last_decision, changed, preset } as unknown as Record<string, unknown>,
+              payload: { decision: ai_supervisor_state.last_decision, changed, preset } as never,
             });
 
             // Telegram only on actual changes
