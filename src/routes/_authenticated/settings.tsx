@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+
 import { toast } from "sonner";
 import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
 import { detectPreset, getPreset, type PresetId } from "@/lib/strategy-presets";
@@ -88,12 +88,10 @@ const SECTIONS: Section[] = [
   },
 ];
 
-type ToggleField = { key: string; label: string; help?: string };
-const TOGGLE_FIELDS: ToggleField[] = [
-  { key: "core_only_mode", label: "Modalità core-only", help: "Spegne completamente il satellite — tiene solo il core BTC/ETH" },
-  { key: "bear_dca_enabled", label: "Bear-DCA attivo", help: "Accumula in deep fear (F&G sotto la soglia). Attivare solo se in backtest batte il trend puro su Sharpe E MaxDD" },
-  { key: "exclude_fiat_commodity", label: "Escludi token fiat/commodity dal satellite", help: "Esclude es. ZEUR, USDT, USDC, PAXG, XAUT, EURT dall'universo satellite" },
-];
+// AI-managed flags (core_only_mode, bear_dca_enabled, exclude_fiat_commodity)
+// are NOT exposed here — they are decided automatically by the AI Supervisor
+// (hourly cron) based on the active preset + market conditions.
+// Read-only view available in /diagnostica.
 
 const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 
@@ -109,7 +107,6 @@ function SettingsPage() {
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
-  const [toggles, setToggles] = useState<Record<string, boolean>>({});
   const [timeframe, setTimeframe] = useState("4h");
 
   useEffect(() => {
@@ -117,9 +114,6 @@ function SettingsPage() {
       const next: Record<string, string> = {};
       for (const f of ALL_FIELDS) next[f.key] = String((q.data as Record<string, unknown>)[f.key] ?? "");
       setForm(next);
-      const t: Record<string, boolean> = {};
-      for (const tg of TOGGLE_FIELDS) t[tg.key] = Boolean((q.data as Record<string, unknown>)[tg.key]);
-      setToggles(t);
       setTimeframe(q.data.timeframe ?? "4h");
     }
   }, [q.data]);
@@ -133,7 +127,6 @@ function SettingsPage() {
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
-      for (const tg of TOGGLE_FIELDS) patch[tg.key] = toggles[tg.key] ?? false;
       const merged = { ...(q.data as Record<string, unknown>), ...patch };
       const newPreset = detectPreset(merged);
       patch.strategy_preset = newPreset;
@@ -275,26 +268,16 @@ function SettingsPage() {
             </Card>
           ))}
 
-          <Card>
+          <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
-              <CardTitle className="text-base">Interruttori v3</CardTitle>
-              <CardDescription>Toggle che modificano il comportamento globale del bot.</CardDescription>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" /> Interruttori strategici — gestiti dall'AI
+              </CardTitle>
+              <CardDescription>
+                <strong>core_only_mode</strong>, <strong>bear_dca_enabled</strong> e <strong>exclude_fiat_commodity</strong> sono decisi automaticamente ogni ora dall'<em>AI Supervisor</em> in base al preset attivo (Conservative/Balanced/Aggressive) e alle condizioni di mercato live (regime macro, F&G, drawdown).
+                Stato corrente e motivazione visibili in <Link to="/diagnostica" className="text-primary underline">Diagnostica</Link>.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {TOGGLE_FIELDS.map((tg) => (
-                <div key={tg.key} className="flex items-start justify-between gap-4 py-1">
-                  <div className="flex-1">
-                    <Label htmlFor={tg.key} className="cursor-pointer">{tg.label}</Label>
-                    {tg.help && <p className="text-xs text-muted-foreground mt-0.5">{tg.help}</p>}
-                  </div>
-                  <Switch
-                    id={tg.key}
-                    checked={toggles[tg.key] ?? false}
-                    onCheckedChange={(v) => setToggles((s) => ({ ...s, [tg.key]: v }))}
-                  />
-                </div>
-              ))}
-            </CardContent>
           </Card>
 
           <Card>

@@ -475,6 +475,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          ai_supervisor_state: Json | null
           asset_universe: Json
           bear_dca_cap_pct: number
           bear_dca_enabled: boolean
@@ -528,6 +529,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_supervisor_state?: Json | null
           asset_universe?: Json
           bear_dca_cap_pct?: number
           bear_dca_enabled?: boolean
@@ -581,6 +583,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_supervisor_state?: Json | null
           asset_universe?: Json
           bear_dca_cap_pct?: number
           bear_dca_enabled?: boolean

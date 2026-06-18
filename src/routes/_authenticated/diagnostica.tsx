@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Sparkles } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
@@ -186,6 +186,56 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
         </CardContent>
       </Card>
 
+      {/* AI Supervisor */}
+      <Card className="border-primary/30">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="size-5 text-primary" /> AI Supervisor
+              </CardTitle>
+              <CardDescription>
+                Decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {data.aiSupervisor.confidence ? (
+                <Badge variant="outline" className={
+                  data.aiSupervisor.confidence === "high" ? "bg-green-500/15 text-green-500 border-green-500/30" :
+                  data.aiSupervisor.confidence === "medium" ? "bg-amber-500/15 text-amber-500 border-amber-500/30" :
+                  "bg-muted text-muted-foreground"
+                }>
+                  Confidence: {data.aiSupervisor.confidence}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">In attesa primo run</Badge>
+              )}
+              {data.aiSupervisor.changedFlags.length > 0 && (
+                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/30">
+                  Ultimo ciclo: {data.aiSupervisor.changedFlags.length} flag cambiato/i
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <FlagRow label="Core-only" on={data.aiSupervisor.decision?.core_only_mode ?? !!data.settings?.core_only_mode} changed={data.aiSupervisor.changedFlags.includes("core_only_mode")} />
+            <FlagRow label="Bear-DCA" on={data.aiSupervisor.decision?.bear_dca_enabled ?? !!data.settings?.bear_dca_enabled} changed={data.aiSupervisor.changedFlags.includes("bear_dca_enabled")} />
+            <FlagRow label="Escludi fiat/oro" on={data.aiSupervisor.decision?.exclude_fiat_commodity ?? !!data.settings?.exclude_fiat_commodity} changed={data.aiSupervisor.changedFlags.includes("exclude_fiat_commodity")} />
+
+          </div>
+          {data.aiSupervisor.reasoning && (
+            <div className="text-sm bg-muted/30 rounded-md px-3 py-2 border border-border">
+              <span className="font-medium">Motivazione: </span>{data.aiSupervisor.reasoning}
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            Ultimo run: {data.aiSupervisor.lastRunAt ? new Date(data.aiSupervisor.lastRunAt).toLocaleString("it-IT") : "mai (cron orario)"}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Bot status */}
       <Card>
         <CardHeader><CardTitle className="text-base">Stato bot</CardTitle></CardHeader>
@@ -311,6 +361,20 @@ function Kpi({ label, value, suffix }: { label: string; value: string; suffix?: 
       <div className="text-lg font-semibold tabular-nums">
         {value}
         {suffix && <span className="text-xs text-muted-foreground ml-1">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function FlagRow({ label, on, changed }: { label: string; on: boolean; changed: boolean }) {
+  return (
+    <div className={`flex items-center justify-between rounded-md border px-3 py-2 ${changed ? "border-blue-500/40 bg-blue-500/5" : "border-border bg-muted/20"}`}>
+      <div className="text-sm font-medium">{label}</div>
+      <div className="flex items-center gap-2">
+        {changed && <span className="text-[10px] uppercase tracking-wide text-blue-400">cambiato</span>}
+        <Badge variant="outline" className={on ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-muted text-muted-foreground"}>
+          {on ? "ON" : "OFF"}
+        </Badge>
       </div>
     </div>
   );

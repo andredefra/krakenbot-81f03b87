@@ -79,6 +79,13 @@ export type DiagnosticsPayload = {
   } | null;
   openPositions: number;
   totalFeesUsd: number;
+  aiSupervisor: {
+    lastRunAt: string | null;
+    decision: { core_only_mode: boolean; bear_dca_enabled: boolean; exclude_fiat_commodity: boolean } | null;
+    reasoning: string | null;
+    confidence: "low" | "medium" | "high" | null;
+    changedFlags: string[];
+  };
   lastEngineMessage: string | null;
   lastEngineAt: string | null;
 };
@@ -92,7 +99,7 @@ export const getDiagnostics = createServerFn({ method: "GET" })
       supabase.from("engine_diagnostics").select("*").eq("user_id", userId).maybeSingle(),
       supabase
         .from("settings")
-        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct")
+        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct,ai_supervisor_state")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
@@ -205,6 +212,17 @@ export const getDiagnostics = createServerFn({ method: "GET" })
         : null,
       openPositions: openRes.count ?? 0,
       totalFeesUsd,
+      aiSupervisor: (() => {
+        const s = (settingsRow as unknown as { ai_supervisor_state?: Record<string, unknown> } | null)?.ai_supervisor_state ?? null;
+        const dec = (s?.last_decision ?? null) as null | { core_only_mode: boolean; bear_dca_enabled: boolean; exclude_fiat_commodity: boolean };
+        return {
+          lastRunAt: (s?.last_run_at as string) ?? null,
+          decision: dec,
+          reasoning: (s?.reasoning as string) ?? null,
+          confidence: (s?.confidence as "low" | "medium" | "high") ?? null,
+          changedFlags: (s?.changed_flags as string[]) ?? [],
+        };
+      })(),
       lastEngineMessage: eventRes.data?.message ?? null,
       lastEngineAt: eventRes.data?.created_at ?? null,
     };
