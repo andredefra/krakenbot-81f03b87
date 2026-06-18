@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     const pairList: Array<{ key: string; altname: string; base: string }> = usdPairs.map(([key, p]) => {
       const base = (p.base || "").replace(/^X(?=[A-Z]{3,})/, "").replace(/^XBT$/, "BTC");
       return { key, altname: p.altname, base };
-    }).filter((p) => !EXCLUDE.has(p.base));
+    }).filter((p) => !EXCLUDE.has(p.base) && !(excludeFiatCommodity && FIAT_COMMODITY.has(p.base)));
 
     // 2) Ticker batch (Kraken accetta lista, ma per sicurezza spezza)
     const tickers: Record<string, TickerRow> = {};
