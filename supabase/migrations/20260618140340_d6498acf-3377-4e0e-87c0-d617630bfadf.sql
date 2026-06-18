@@ -1,0 +1,1 @@
+ALTER TABLE public.engine_diagnostics ADD COLUMN IF NOT EXISTS bear_dca_state jsonb;

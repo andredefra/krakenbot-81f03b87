@@ -79,6 +79,7 @@ export type Database = {
       }
       engine_diagnostics: {
         Row: {
+          bear_dca_state: Json | null
           btc_last: number | null
           btc_sma200: number | null
           btc_sma50: number | null
@@ -100,6 +101,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bear_dca_state?: Json | null
           btc_last?: number | null
           btc_sma200?: number | null
           btc_sma50?: number | null
@@ -121,6 +123,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          bear_dca_state?: Json | null
           btc_last?: number | null
           btc_sma200?: number | null
           btc_sma50?: number | null
