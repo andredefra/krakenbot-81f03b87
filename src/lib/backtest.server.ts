@@ -1,6 +1,6 @@
 // Pure backtest engine v3. Deterministic, no I/O — accepts pre-loaded OHLC + F&G arrays
-// and returns equity curves + KPIs for: strategy, BTC buy&hold, S&P 500, BTC-DCA,
-// BTC trend-core (SMA200), BTC trend + Bear-DCA. Includes a GO-LIVE gate check.
+// and returns equity curves + KPIs for: strategy, BTC buy&hold, S&P 500.
+// GO LIVE gate compares strategy vs BTC Buy & Hold (benchmark passivo standard).
 
 export type Candle = { date: string; close: number };
 export type FgPoint = { date: string; value: number };
@@ -19,23 +19,23 @@ export type PresetParams = {
 
 export type BearDcaParams = {
   enabled: boolean;
-  ddTrigger: number;       // e.g. 0.25 = -25% dal massimo a 90gg
-  intervalDays: number;    // ogni quanti giorni una tranche
-  tranchePct: number;      // % del capitale per tranche
-  maxPct: number;          // tetto totale dell'accumulo come % capitale
-  ddWindow: number;        // finestra rolling per il massimo
-  smaPeriod: number;       // periodo SMA del filtro di regime (default 200)
+  ddTrigger: number;
+  intervalDays: number;
+  tranchePct: number;
+  maxPct: number;
+  ddWindow: number;
+  smaPeriod: number;
 };
 
 export type BacktestInput = {
   startCapital: number;
   preset: PresetParams;
-  btc: Candle[]; // sorted asc by date
+  btc: Candle[];
   spx: Candle[];
   fg: FgPoint[];
   assets: Record<string, Candle[]>;
-  feePct: number;       // per side, e.g. 0.4 (%)
-  slippagePct: number;  // 0.1 (%)
+  feePct: number;
+  slippagePct: number;
   bearDca: BearDcaParams;
 };
 
@@ -44,9 +44,6 @@ export type EquityPoint = {
   strategy: number;
   btc: number;
   spx: number;
-  dca: number;
-  trendCore: number;
-  trendDca: number;
 };
 
 export type Kpis = {
@@ -63,8 +60,8 @@ export type Kpis = {
 export type LiveGateChecks = {
   profitFactorOk: boolean;       // PF > 1.3
   sharpeOk: boolean;             // Sharpe > 0.8
-  beatsDcaSharpe: boolean;       // sharpe strategy >= sharpe DCA
-  beatsDcaDrawdown: boolean;     // |maxDD strategy| <= |maxDD DCA|
+  beatsBtcSharpe: boolean;       // sharpe strategy >= sharpe BTC B&H
+  beatsBtcDrawdown: boolean;     // |maxDD strategy| <= |maxDD BTC B&H|
 };
 
 export type BacktestResult = {
@@ -72,9 +69,6 @@ export type BacktestResult = {
   strategyKpis: Kpis;
   btcKpis: Kpis;
   spxKpis: Kpis;
-  dcaKpis: Kpis;
-  trendCoreKpis: Kpis;
-  trendDcaKpis: Kpis;
   passesLiveGate: boolean;
   liveGateChecks: LiveGateChecks;
   tradeLog: Array<{ asset: string; entryDate: string; exitDate: string; pnlPct: number }>;
@@ -85,17 +79,6 @@ function sma(values: number[], period: number, endIdx: number): number | null {
   let s = 0;
   for (let i = endIdx - period + 1; i <= endIdx; i++) s += values[i];
   return s / period;
-}
-
-function rollingMax(values: number[], window: number): number[] {
-  const out: number[] = new Array(values.length);
-  for (let i = 0; i < values.length; i++) {
-    const start = Math.max(0, i - window + 1);
-    let m = -Infinity;
-    for (let j = start; j <= i; j++) if (values[j] > m) m = values[j];
-    out[i] = m;
-  }
-  return out;
 }
 
 function buildDateIndex<T extends { date: string }>(rows: T[]): Map<string, T> {
@@ -159,8 +142,6 @@ type OpenPos = {
   trailingHigh: number | null;
 };
 
-// ============ BTC benchmark strategies (single-asset) ============
-
 function feeCost(notional: number, feePct: number, slipPct: number): number {
   return notional * ((feePct + slipPct) / 100);
 }
@@ -172,101 +153,8 @@ function runBuyHold(price: number[], capital: number, feePct: number, slipPct: n
   return { equity, trades: [{ pnlPct: (final / capital - 1) * 100 }] };
 }
 
-function runDcaBenchmark(price: number[], capital: number, feePct: number, slipPct: number, interval = 7): { equity: number[]; trades: { pnlPct: number }[] } {
-  const n = price.length;
-  const nTranches = Math.max(1, Math.floor(n / interval));
-  const tranche = capital / nTranches;
-  let cash = capital, units = 0, deployed = 0;
-  const equity = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    if (i % interval === 0 && deployed < nTranches && cash >= tranche) {
-      const spend = Math.min(tranche, cash);
-      units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
-      cash -= spend;
-      deployed++;
-    }
-    equity[i] = cash + units * price[i];
-  }
-  const final = equity[n - 1];
-  return { equity, trades: [{ pnlPct: (final / capital - 1) * 100 }] };
-}
-
-function runTrendBtc(
-  price: number[],
-  capital: number,
-  feePct: number,
-  slipPct: number,
-  smaPeriod: number,
-  bearDca: BearDcaParams | null,
-): { equity: number[]; trades: { pnlPct: number }[] } {
-  const n = price.length;
-  // SMA precompute
-  const smaArr = new Array<number | null>(n).fill(null);
-  let sum = 0;
-  for (let i = 0; i < n; i++) {
-    sum += price[i];
-    if (i >= smaPeriod) sum -= price[i - smaPeriod];
-    if (i >= smaPeriod - 1) smaArr[i] = sum / smaPeriod;
-  }
-  const rollHigh = bearDca ? rollingMax(price, bearDca.ddWindow) : null;
-
-  let cash = capital, units = 0;
-  const equity = new Array<number>(n);
-  const trades: { pnlPct: number }[] = [];
-  let inTrend = false;
-  let costBasis = 0;
-  let lastDca = -1e9, dcaDeployed = 0;
-
-  for (let i = 0; i < n; i++) {
-    const inUp = smaArr[i] != null && price[i] > (smaArr[i] as number);
-    if (inUp) {
-      if (!inTrend) {
-        const spend = cash;
-        if (spend > 0) {
-          units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
-          costBasis += spend;
-          cash = 0;
-        }
-        inTrend = true;
-      }
-    } else {
-      if (inTrend) {
-        const proceeds = units * price[i] - feeCost(units * price[i], feePct, slipPct);
-        trades.push({ pnlPct: costBasis > 0 ? ((proceeds - costBasis) / costBasis) * 100 : 0 });
-        cash = proceeds;
-        units = 0;
-        inTrend = false;
-        costBasis = 0;
-        lastDca = -1e9;
-        dcaDeployed = 0;
-      } else if (bearDca && bearDca.enabled && rollHigh) {
-        const dd = price[i] / rollHigh[i] - 1;
-        const budgetLeft = (bearDca.maxPct / 100) * capital - dcaDeployed;
-        if (dd <= -bearDca.ddTrigger && budgetLeft > 0 && (i - lastDca) >= bearDca.intervalDays) {
-          const spend = Math.min((bearDca.tranchePct / 100) * capital, cash, budgetLeft);
-          if (spend > 0) {
-            units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
-            cash -= spend;
-            costBasis += spend;
-            dcaDeployed += spend;
-            lastDca = i;
-          }
-        }
-      }
-    }
-    equity[i] = cash + units * price[i];
-  }
-  if (units > 0) {
-    const proceeds = units * price[n - 1] - feeCost(units * price[n - 1], feePct, slipPct);
-    trades.push({ pnlPct: costBasis > 0 ? ((proceeds - costBasis) / costBasis) * 100 : 0 });
-  }
-  return { equity, trades };
-}
-
-// ============ Main engine ============
-
 export function runBacktest(input: BacktestInput): BacktestResult {
-  const { startCapital, preset, btc, spx, fg, assets, feePct, slippagePct, bearDca } = input;
+  const { startCapital, preset, btc, spx, fg, assets, feePct, slippagePct } = input;
 
   const dates = btc.map((c) => c.date);
   const btcCloses = btc.map((c) => c.close);
@@ -287,11 +175,9 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   const tradeLog: Array<{ asset: string; entryDate: string; exitDate: string; pnlPct: number }> = [];
 
   const equityStrategy: number[] = [];
-  const equityBtc: number[] = [];
   const equitySpx: number[] = [];
   const equityDates: string[] = [];
 
-  const btcStart = btcCloses[0];
   const spxFirst = spx.length ? spx[0].close : null;
 
   for (let i = 0; i < dates.length; i++) {
@@ -372,41 +258,31 @@ export function runBacktest(input: BacktestInput): BacktestResult {
 
     const equity = cash + mtmValue;
     equityStrategy.push(equity);
-    equityBtc.push((btcLast / btcStart) * startCapital);
     const spxToday = spxIdx.get(date)?.close;
     const spxLast = spxToday ?? (equitySpx.length ? (equitySpx[equitySpx.length - 1] / startCapital) * (spxFirst ?? 1) : (spxFirst ?? btcLast));
     equitySpx.push(spxFirst ? (spxLast / spxFirst) * startCapital : startCapital);
     equityDates.push(date);
   }
 
-  // BTC benchmark strategies
+  // BTC Buy & Hold benchmark
   const bh = runBuyHold(btcCloses, startCapital, feePct, slippagePct);
-  const dca = runDcaBenchmark(btcCloses, startCapital, feePct, slippagePct, 7);
-  const tc = runTrendBtc(btcCloses, startCapital, feePct, slippagePct, bearDca.smaPeriod, null);
-  const td = runTrendBtc(btcCloses, startCapital, feePct, slippagePct, bearDca.smaPeriod, bearDca);
 
   const equity: EquityPoint[] = equityDates.map((d, i) => ({
     date: d,
     strategy: equityStrategy[i],
     btc: bh.equity[i],
     spx: equitySpx[i],
-    dca: dca.equity[i],
-    trendCore: tc.equity[i],
-    trendDca: td.equity[i],
   }));
 
   const strategyKpis = computeKpis(equityStrategy, equityDates, tradeLog);
   const btcKpis = computeKpis(bh.equity, equityDates, bh.trades);
   const spxKpis = computeKpis(equitySpx, equityDates, [{ pnlPct: (equitySpx[equitySpx.length - 1] / startCapital - 1) * 100 }]);
-  const dcaKpis = computeKpis(dca.equity, equityDates, dca.trades);
-  const trendCoreKpis = computeKpis(tc.equity, equityDates, tc.trades);
-  const trendDcaKpis = computeKpis(td.equity, equityDates, td.trades);
 
   const liveGateChecks: LiveGateChecks = {
     profitFactorOk: strategyKpis.profitFactor > 1.3,
     sharpeOk: strategyKpis.sharpe > 0.8,
-    beatsDcaSharpe: strategyKpis.sharpe >= dcaKpis.sharpe,
-    beatsDcaDrawdown: Math.abs(strategyKpis.maxDrawdownPct) <= Math.abs(dcaKpis.maxDrawdownPct),
+    beatsBtcSharpe: strategyKpis.sharpe >= btcKpis.sharpe,
+    beatsBtcDrawdown: Math.abs(strategyKpis.maxDrawdownPct) <= Math.abs(btcKpis.maxDrawdownPct),
   };
   const passesLiveGate = Object.values(liveGateChecks).every(Boolean);
 
@@ -415,9 +291,6 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     strategyKpis,
     btcKpis,
     spxKpis,
-    dcaKpis,
-    trendCoreKpis,
-    trendDcaKpis,
     passesLiveGate,
     liveGateChecks,
     tradeLog,

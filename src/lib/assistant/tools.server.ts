@@ -135,7 +135,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getLatestBacktest: tool({
-      description: "Ultimo backtest v3 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC DCA).",
+      description: "Ultimo backtest v3 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC Buy & Hold su Sharpe e Max DD).",
       inputSchema: z.object({}),
       execute: async () => {
         const { data, error } = await supabase
