@@ -59,6 +59,12 @@ function DiagnosticaPage() {
 function Diag({ data }: { data: DiagnosticsPayload }) {
   const macroOn = data.macro.regime === "risk-on";
   const mesoOn = data.meso.regime === "risk-on";
+  const fetchFlags = useServerFn(listFlagChanges);
+  const flagsQ = useQuery({
+    queryKey: ["ai-flag-changes"],
+    queryFn: () => fetchFlags({ data: { limit: 10 } }),
+    refetchInterval: 60_000,
+  });
 
   return (
     <>
