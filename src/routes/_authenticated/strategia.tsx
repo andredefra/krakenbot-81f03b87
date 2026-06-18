@@ -61,7 +61,7 @@ function StrategiaPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Strategia</h1>
         <p className="text-sm text-muted-foreground">
-          Strategia v2 <strong>Core-Satellite</strong> su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
+          Strategia v3 <strong>Core-Led</strong> con Bear-DCA su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
           <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop. Solo i nuovi useranno il preset.</span>
         </p>
       </div>
@@ -284,7 +284,7 @@ function BacktestSection() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
-            <CardDescription>Strategia v2 simulata vs BTC buy &amp; hold e benchmark S&amp;P 500</CardDescription>
+            <CardDescription>Strategia v3 vs BTC Buy &amp; Hold, DCA, Trend, Trend+BearDCA e S&amp;P 500</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -370,8 +370,11 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v2" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC buy & hold" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v3" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC Buy & Hold" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="dca" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="BTC DCA" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="trendCore" stroke="#10b981" dot={false} strokeWidth={1.5} name="BTC Trend (SMA200)" isAnimationActive={false} strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="trendDca" stroke="#14b8a6" dot={false} strokeWidth={1.5} name="BTC Trend+BearDCA" isAnimationActive={false} strokeDasharray="4 4" />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -383,20 +386,52 @@ function BacktestSection() {
               const cls = (v: number) => v >= startCapital ? "text-[color:var(--profit)]" : "text-[color:var(--loss)]";
               const sV = final(runMut.data.strategyKpis.totalReturnPct);
               const bV = final(runMut.data.btcKpis.totalReturnPct);
+              const dV = final(runMut.data.dcaKpis.totalReturnPct);
               const pV = final(runMut.data.spxKpis.totalReturnPct);
               return (
                 <div className="text-sm bg-muted/30 border border-border rounded-md px-3 py-2 flex flex-wrap gap-x-6 gap-y-1">
                   <span className="text-muted-foreground">Da {eur(startCapital)} a:</span>
                   <span>Strategia <strong className={`tabular-nums ${cls(sV)}`}>{eur(sV)}</strong></span>
                   <span>BTC <strong className={`tabular-nums ${cls(bV)}`}>{eur(bV)}</strong></span>
+                  <span>DCA <strong className={`tabular-nums ${cls(dV)}`}>{eur(dV)}</strong></span>
                   <span>S&amp;P 500 <strong className={`tabular-nums ${cls(pV)}`}>{eur(pV)}</strong></span>
                 </div>
               );
             })()}
 
-            <div className="grid grid-cols-3 gap-3">
-              <KpiCard title="Strategia v2" kpis={runMut.data.strategyKpis} highlight />
-              <KpiCard title="BTC buy & hold" kpis={runMut.data.btcKpis} />
+            {/* GO LIVE gate */}
+            {(() => {
+              const c = runMut.data.liveGateChecks;
+              const items: Array<[string, boolean]> = [
+                ["Profit Factor > 1.3", c.profitFactorOk],
+                ["Sharpe > 0.8", c.sharpeOk],
+                ["Sharpe ≥ DCA", c.beatsDcaSharpe],
+                ["Max DD ≤ DCA", c.beatsDcaDrawdown],
+              ];
+              const pass = runMut.data.passesLiveGate;
+              return (
+                <div className={`rounded-md border p-3 ${pass ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}`}>
+                  <div className="text-sm font-medium mb-2">
+                    {pass ? "✅ Cancello GO LIVE: PASSATO" : "⚠️ Cancello GO LIVE: NON passato"}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    {items.map(([label, ok]) => (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className={ok ? "text-emerald-500" : "text-amber-500"}>{ok ? "✓" : "✗"}</span>
+                        <span className={ok ? "" : "text-muted-foreground"}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <KpiCard title="Strategia v3" kpis={runMut.data.strategyKpis} highlight />
+              <KpiCard title="BTC Buy & Hold" kpis={runMut.data.btcKpis} />
+              <KpiCard title="BTC DCA" kpis={runMut.data.dcaKpis} />
+              <KpiCard title="BTC Trend" kpis={runMut.data.trendCoreKpis} />
+              <KpiCard title="BTC Trend+BearDCA" kpis={runMut.data.trendDcaKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
 
@@ -419,12 +454,12 @@ function BacktestSection() {
             })()}
 
             <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
-              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v2)</div>
-              <div>• <strong>Allocazione Core-Satellite</strong>: il core (BTC/ETH) resta investito, lo sleeve satellite fa trading attivo solo per la quota satellite.</div>
-              <div>• <strong>Filtro macro</strong>: se BTC scende sotto SMA{200}, il core esce in stablecoin (rientro al recupero).</div>
-              <div>• <strong>Disciplina commissioni</strong>: target minimo {`+${runMut.data.preset === "conservative" ? 5 : runMut.data.preset === "aggressive" ? 3 : 4}%`}, cooldown e tetto trade mensile applicati.</div>
-              <div>• <strong>Commissioni</strong>: 0.4% per lato (taker Kraken Pro), slippage 0.1% per lato.</div>
-              <div>• <strong>Stop</strong>: max(stop_min, 2×ATR) come da preset; trailing e take-profit parziale applicati.</div>
+              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v3)</div>
+              <div>• <strong>Strategia v3 Core-Led</strong>: core (BTC/ETH) protetto da filtro macro SMA200 BTC; satellite con regole strette.</div>
+              <div>• <strong>Benchmark equi</strong>: oltre a Buy &amp; Hold e S&amp;P 500, includiamo BTC DCA e BTC Trend (SMA200) con/senza Bear-DCA — gli stessi metri usati dal cancello GO LIVE.</div>
+              <div>• <strong>Bear-DCA</strong>: in downtrend con drawdown profondo, accumula tranche fino al tetto (parametri da pagina Rischio).</div>
+              <div>• <strong>Commissioni reali Kraken</strong>: taker e slippage letti dai tuoi settings (default taker 0.40% + slip 0.05%).</div>
+              <div>• <strong>Cancello GO LIVE</strong>: Profit Factor &gt; 1.3, Sharpe &gt; 0.8, Sharpe ≥ DCA, MaxDD ≤ DCA.</div>
               <div className="pt-1 opacity-80">Storico crypto: Binance (storico lungo) + Kraken OHLC recenti. S&amp;P 500: Yahoo/Stooq.</div>
             </div>
 
@@ -446,7 +481,7 @@ function BacktestSection() {
   );
 }
 
-type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
+type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; sortino: number; trades: number; winRatePct: number; profitFactor: number };
 
 function KpiCard({ title, kpis, highlight }: { title: string; kpis: KpisShape; highlight?: boolean }) {
   return (
@@ -457,6 +492,7 @@ function KpiCard({ title, kpis, highlight }: { title: string; kpis: KpisShape; h
         <Row label="CAGR" value={`${kpis.cagr >= 0 ? "+" : ""}${kpis.cagr.toFixed(1)}%`} />
         <Row label="Max DD" value={`${kpis.maxDrawdownPct.toFixed(1)}%`} negative />
         <Row label="Sharpe" value={kpis.sharpe.toFixed(2)} />
+        <Row label="Sortino" value={kpis.sortino.toFixed(2)} />
         {kpis.trades > 1 && <Row label="# Trade" value={kpis.trades.toString()} />}
         {kpis.trades > 1 && <Row label="Win rate" value={`${kpis.winRatePct.toFixed(0)}%`} />}
         {kpis.trades > 1 && <Row label="Profit factor" value={kpis.profitFactor.toFixed(2)} />}
