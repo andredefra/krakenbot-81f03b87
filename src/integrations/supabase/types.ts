@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           id: string
           input_hash: string
+          passes_live_gate: boolean | null
           preset: string
           result: Json
           universe: string
@@ -29,6 +30,7 @@ export type Database = {
           created_at?: string
           id?: string
           input_hash: string
+          passes_live_gate?: boolean | null
           preset: string
           result: Json
           universe: string
@@ -39,6 +41,7 @@ export type Database = {
           created_at?: string
           id?: string
           input_hash?: string
+          passes_live_gate?: boolean | null
           preset?: string
           result?: Json
           universe?: string
