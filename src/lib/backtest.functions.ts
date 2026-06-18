@@ -14,12 +14,19 @@ const inputSchema = z.object({
   startCapital: z.number().min(10).max(1_000_000).default(200),
 });
 
+type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; sortino: number; trades: number; winRatePct: number; profitFactor: number };
+
 export type BacktestPayload = {
   cached: boolean;
-  equity: Array<{ date: string; strategy: number; btc: number; spx: number }>;
-  strategyKpis: { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; trades: number; winRatePct: number; profitFactor: number };
-  btcKpis: BacktestPayload["strategyKpis"];
-  spxKpis: BacktestPayload["strategyKpis"];
+  equity: Array<{ date: string; strategy: number; btc: number; spx: number; dca: number; trendCore: number; trendDca: number }>;
+  strategyKpis: KpisShape;
+  btcKpis: KpisShape;
+  spxKpis: KpisShape;
+  dcaKpis: KpisShape;
+  trendCoreKpis: KpisShape;
+  trendDcaKpis: KpisShape;
+  passesLiveGate: boolean;
+  liveGateChecks: { profitFactorOk: boolean; sharpeOk: boolean; beatsDcaSharpe: boolean; beatsDcaDrawdown: boolean };
   tradesCount: number;
   universe: string;
   preset: string;
