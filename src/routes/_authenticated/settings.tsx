@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
 import { detectPreset, getPreset, type PresetId } from "@/lib/strategy-presets";
@@ -68,6 +69,30 @@ const SECTIONS: Section[] = [
       { key: "fg_greed_cap", label: "Fear & Greed cap (gate satellite)" },
     ],
   },
+  {
+    title: "Commissioni reali Kraken (v3 — usate anche dal backtest)",
+    fields: [
+      { key: "maker_fee_pct", label: "Maker fee", suffix: "%", help: "Default Kraken Pro: 0.25%" },
+      { key: "taker_fee_pct", label: "Taker fee", suffix: "%", help: "Default Kraken Pro: 0.40% — il backtest USA questi valori" },
+      { key: "slippage_pct", label: "Slippage stimato", suffix: "%", help: "Default 0.05% per lato" },
+    ],
+  },
+  {
+    title: "Bear-DCA (opzionale — default OFF, attivare solo dopo backtest)",
+    fields: [
+      { key: "bear_dca_fg_threshold", label: "Soglia Fear & Greed (deep fear)", help: "Default 22 — accumula sotto questo valore" },
+      { key: "bear_dca_cap_pct", label: "Tetto allocazione DCA", suffix: "% del core", help: "Default 30%" },
+      { key: "bear_dca_tranche_pct", label: "Dimensione tranche", suffix: "% capitale", help: "Default 5%" },
+      { key: "bear_dca_interval_days", label: "Intervallo tra tranche", suffix: "giorni", help: "Default 14" },
+    ],
+  },
+];
+
+type ToggleField = { key: string; label: string; help?: string };
+const TOGGLE_FIELDS: ToggleField[] = [
+  { key: "core_only_mode", label: "Modalità core-only", help: "Spegne completamente il satellite — tiene solo il core BTC/ETH" },
+  { key: "bear_dca_enabled", label: "Bear-DCA attivo", help: "Accumula in deep fear (F&G sotto la soglia). Attivare solo se in backtest batte il trend puro su Sharpe E MaxDD" },
+  { key: "exclude_fiat_commodity", label: "Escludi token fiat/commodity dal satellite", help: "Esclude es. ZEUR, USDT, USDC, PAXG, XAUT, EURT dall'universo satellite" },
 ];
 
 const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
@@ -84,6 +109,7 @@ function SettingsPage() {
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [toggles, setToggles] = useState<Record<string, boolean>>({});
   const [timeframe, setTimeframe] = useState("4h");
 
   useEffect(() => {
@@ -91,6 +117,9 @@ function SettingsPage() {
       const next: Record<string, string> = {};
       for (const f of ALL_FIELDS) next[f.key] = String((q.data as Record<string, unknown>)[f.key] ?? "");
       setForm(next);
+      const t: Record<string, boolean> = {};
+      for (const tg of TOGGLE_FIELDS) t[tg.key] = Boolean((q.data as Record<string, unknown>)[tg.key]);
+      setToggles(t);
       setTimeframe(q.data.timeframe ?? "4h");
     }
   }, [q.data]);
@@ -98,12 +127,13 @@ function SettingsPage() {
   const save = useMutation({
     mutationFn: async () => {
       if (!q.data) throw new Error("Nessuna riga settings");
-      const patch: Record<string, number | string> = { timeframe };
+      const patch: Record<string, number | string | boolean> = { timeframe };
       for (const f of ALL_FIELDS) {
         const n = Number(form[f.key]);
         if (Number.isNaN(n)) throw new Error(`Valore non valido: ${f.label}`);
         patch[f.key] = n;
       }
+      for (const tg of TOGGLE_FIELDS) patch[tg.key] = toggles[tg.key] ?? false;
       const merged = { ...(q.data as Record<string, unknown>), ...patch };
       const newPreset = detectPreset(merged);
       patch.strategy_preset = newPreset;
@@ -148,7 +178,7 @@ function SettingsPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Impostazioni rischio</h1>
-        <p className="text-sm text-muted-foreground">Parametri della Strategia v2 (Core-Satellite). Modificabili in qualsiasi momento.</p>
+        <p className="text-sm text-muted-foreground">Parametri della Strategia v3 (Core-Led 70/30, fee Kraken reali, Bear-DCA opzionale). Modificabili in qualsiasi momento.</p>
       </div>
 
       {q.data && (
@@ -247,8 +277,30 @@ function SettingsPage() {
 
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Interruttori v3</CardTitle>
+              <CardDescription>Toggle che modificano il comportamento globale del bot.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {TOGGLE_FIELDS.map((tg) => (
+                <div key={tg.key} className="flex items-start justify-between gap-4 py-1">
+                  <div className="flex-1">
+                    <Label htmlFor={tg.key} className="cursor-pointer">{tg.label}</Label>
+                    {tg.help && <p className="text-xs text-muted-foreground mt-0.5">{tg.help}</p>}
+                  </div>
+                  <Switch
+                    id={tg.key}
+                    checked={toggles[tg.key] ?? false}
+                    onCheckedChange={(v) => setToggles((s) => ({ ...s, [tg.key]: v }))}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Timeframe</CardTitle>
-              <CardDescription>v2 raccomandato: 4h o daily (meno rumore).</CardDescription>
+              <CardDescription>v3 raccomandato: 4h o daily (meno rumore, meno fee).</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-w-xs space-y-1.5">
