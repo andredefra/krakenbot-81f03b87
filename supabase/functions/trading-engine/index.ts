@@ -427,12 +427,8 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       if (stillOpenSat >= maxSatPos) break;
     }
   } else {
-    let blockReason = "";
-    if (!mesoOn) blockReason = mesoReason;
-    else if (dailyLossExceeded) blockReason = `Limite perdita giornaliera superato (${realizedToday.toFixed(2)} USD)`;
-    else blockReason = `Max posizioni satellite raggiunto (${stillOpenSat}/${maxSatPos})`;
     for (const asset of satelliteUniverse) {
-      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: blockReason });
+      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: satBlockReason });
     }
   }
 
