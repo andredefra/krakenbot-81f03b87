@@ -14,6 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_flag_changes: {
+        Row: {
+          created_at: string
+          flag: Database["public"]["Enums"]["ai_supervisor_flag"]
+          from_value: boolean | null
+          id: string
+          inputs: Json
+          rule_triggered: string
+          to_value: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          flag: Database["public"]["Enums"]["ai_supervisor_flag"]
+          from_value?: boolean | null
+          id?: string
+          inputs?: Json
+          rule_triggered: string
+          to_value: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          flag?: Database["public"]["Enums"]["ai_supervisor_flag"]
+          from_value?: boolean | null
+          id?: string
+          inputs?: Json
+          rule_triggered?: string
+          to_value?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_proposals: {
+        Row: {
+          applied_at: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          param_diff: Json
+          rationale: string
+          report_id: string | null
+          status: Database["public"]["Enums"]["ai_proposal_status"]
+          title: string
+          user_id: string
+          validated_at: string | null
+          validation_result: Json | null
+        }
+        Insert: {
+          applied_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          param_diff?: Json
+          rationale?: string
+          report_id?: string | null
+          status?: Database["public"]["Enums"]["ai_proposal_status"]
+          title: string
+          user_id: string
+          validated_at?: string | null
+          validation_result?: Json | null
+        }
+        Update: {
+          applied_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          param_diff?: Json
+          rationale?: string
+          report_id?: string | null
+          status?: Database["public"]["Enums"]["ai_proposal_status"]
+          title?: string
+          user_id?: string
+          validated_at?: string | null
+          validation_result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_proposals_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "ai_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_reports: {
+        Row: {
+          anomalies: Json
+          created_at: string
+          id: string
+          market_snapshot: Json
+          narrative: string
+          period: string
+          proposals_generated: string[]
+          self_snapshot: Json
+          user_id: string
+        }
+        Insert: {
+          anomalies?: Json
+          created_at?: string
+          id?: string
+          market_snapshot?: Json
+          narrative?: string
+          period?: string
+          proposals_generated?: string[]
+          self_snapshot?: Json
+          user_id: string
+        }
+        Update: {
+          anomalies?: Json
+          created_at?: string
+          id?: string
+          market_snapshot?: Json
+          narrative?: string
+          period?: string
+          proposals_generated?: string[]
+          self_snapshot?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       backtest_runs: {
         Row: {
           created_at: string
@@ -475,6 +600,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          ai_bear_dca_fg_threshold: number
           ai_supervisor_state: Json | null
           asset_universe: Json
           bear_dca_cap_pct: number
@@ -529,6 +655,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_bear_dca_fg_threshold?: number
           ai_supervisor_state?: Json | null
           asset_universe?: Json
           bear_dca_cap_pct?: number
@@ -583,6 +710,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_bear_dca_fg_threshold?: number
           ai_supervisor_state?: Json | null
           asset_universe?: Json
           bear_dca_cap_pct?: number
@@ -768,6 +896,17 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      ai_proposal_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "validated"
+        | "validation_failed"
+        | "applied"
+      ai_supervisor_flag:
+        | "core_only_mode"
+        | "bear_dca_enabled"
+        | "exclude_fiat_commodity"
       event_level: "info" | "warn" | "error"
       position_side: "long"
       position_status: "open" | "closed"
@@ -899,6 +1038,19 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_proposal_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "validated",
+        "validation_failed",
+        "applied",
+      ],
+      ai_supervisor_flag: [
+        "core_only_mode",
+        "bear_dca_enabled",
+        "exclude_fiat_commodity",
+      ],
       event_level: ["info", "warn", "error"],
       position_side: ["long"],
       position_status: ["open", "closed"],
