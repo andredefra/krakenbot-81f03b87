@@ -5,7 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { createLovableAiGatewayProvider } from "@/lib/assistant/ai-gateway.server";
 
 const Decision = z.object({
   core_only_mode: z.boolean(),
