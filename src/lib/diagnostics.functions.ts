@@ -54,6 +54,16 @@ export type DiagnosticsPayload = {
     held: CoreHolding[];
   };
   satellite: { open: number; max: number };
+  bearDca: {
+    enabled: boolean;
+    active: boolean;
+    deployedUsd: number;
+    capUsd: number;
+    capPct: number;
+    fgThreshold: number;
+    lastActionAt: string | null;
+    tranches: number;
+  };
   universe: UniverseRow[];
   settings: {
     is_running: boolean;
@@ -63,8 +73,12 @@ export type DiagnosticsPayload = {
     regime_filter: string;
     fg_greed_cap: number;
     strategy_preset: string;
+    core_only_mode: boolean;
+    bear_dca_enabled: boolean;
+    exclude_fiat_commodity: boolean;
   } | null;
   openPositions: number;
+  totalFeesUsd: number;
   lastEngineMessage: string | null;
   lastEngineAt: string | null;
 };
