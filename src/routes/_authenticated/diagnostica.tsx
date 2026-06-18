@@ -254,7 +254,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
             <div className="text-sm text-muted-foreground">Nessun cambio registrato. I flag restano allo stato corrente finché una regola non scatta.</div>
           ) : (
             <div className="space-y-1.5 text-sm">
-              {(flagsQ.data ?? []).map((c) => (
+              {(flagsQ.data ?? []).map((c: { id: string; flag: string; from_value: boolean | null; to_value: boolean; rule_triggered: string; created_at: string }) => (
                 <div key={c.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
                   <Badge variant="outline" className="text-xs shrink-0">{c.flag}</Badge>
                   <span className="text-muted-foreground text-xs">
