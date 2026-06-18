@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Sparkles } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
+import { listFlagChanges } from "@/lib/ai-supervisor.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
   component: DiagnosticaPage,
