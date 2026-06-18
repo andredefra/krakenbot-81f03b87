@@ -150,6 +150,27 @@ export function buildAssistantTools(supabase: DB, userId: string) {
       },
     }),
 
+    getAiSupervisorState: tool({
+      description: "Stato dell'AI Supervisor: ultima decisione sui 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity), motivazione, confidenza, timestamp. Inoltre ultimi eventi 'ai-supervisor' dal log.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const [settingsRes, eventsRes] = await Promise.all([
+          supabase.from("settings").select("strategy_preset,ai_supervisor_state,core_only_mode,bear_dca_enabled,exclude_fiat_commodity").eq("user_id", userId).maybeSingle(),
+          supabase.from("events_log").select("ts,message,payload").eq("user_id", userId).eq("component", "ai-supervisor").order("ts", { ascending: false }).limit(10),
+        ]);
+        return {
+          preset: settingsRes.data?.strategy_preset ?? null,
+          current_flags: {
+            core_only_mode: !!settingsRes.data?.core_only_mode,
+            bear_dca_enabled: !!settingsRes.data?.bear_dca_enabled,
+            exclude_fiat_commodity: !!settingsRes.data?.exclude_fiat_commodity,
+          },
+          last_supervisor_state: settingsRes.data?.ai_supervisor_state ?? null,
+          recent_events: eventsRes.data ?? [],
+        };
+      },
+    }),
+
 
     // -------------------- WRITE TOOLS --------------------
     updateRiskSettings: tool({
