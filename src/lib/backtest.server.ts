@@ -15,6 +15,8 @@ export type PresetParams = {
   daily_loss_limit_pct: number;
   fg_greed_cap: number;
   regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
+  core_pct: number;            // 0..1, quota allocata al core buy & hold
+  core_assets: string[];       // simboli del core sleeve (es. BTC, ETH)
 };
 
 export type BearDcaParams = {
@@ -170,7 +172,24 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     assetDates[sym] = assets[sym].map((c) => c.date);
   }
 
-  let cash = startCapital;
+  // ============ CORE SLEEVE init (buy & hold equipesato) ============
+  // Quota core allocata day-1 in core_assets disponibili. Resta investita
+  // tutto il periodo. Fee + slippage applicati all'ingresso.
+  const corePct = Math.max(0, Math.min(1, preset.core_pct ?? 0));
+  const coreBudget = startCapital * corePct;
+  const satBudget = startCapital - coreBudget;
+  const coreUnits: Record<string, number> = {};
+  const availableCore = preset.core_assets.filter((s) => assets[s] && assets[s].length > 0);
+  if (availableCore.length > 0 && coreBudget > 0) {
+    const slice = coreBudget / availableCore.length;
+    for (const sym of availableCore) {
+      const entry = assets[sym][0].close * (1 + slippagePct / 100);
+      const fee = slice * (feePct / 100);
+      coreUnits[sym] = (slice - fee) / entry;
+    }
+  }
+
+  let cash = satBudget; // cash riservata al satellite
   const open: OpenPos[] = [];
   const tradeLog: Array<{ asset: string; entryDate: string; exitDate: string; pnlPct: number }> = [];
 
@@ -179,9 +198,18 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   const equityDates: string[] = [];
 
   const spxFirst = spx.length ? spx[0].close : null;
+  const coreSet = new Set(preset.core_assets);
 
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
+
+    // valore core sleeve oggi
+    let coreValue = 0;
+    for (const sym of availableCore) {
+      const c = assetIdx[sym]?.get(date);
+      const price = c ? c.close : (assetCloses[sym]?.[Math.min(i, (assetCloses[sym]?.length ?? 1) - 1)] ?? 0);
+      coreValue += (coreUnits[sym] ?? 0) * price;
+    }
 
     let mtmValue = 0;
     for (let j = open.length - 1; j >= 0; j--) {
@@ -228,9 +256,9 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     else if (preset.regime_filter === "fg_only") regimeOk = true;
     if (preset.regime_filter !== "off" && fgVal != null && fgVal > preset.fg_greed_cap) regimeOk = false;
 
-    if (regimeOk && open.length < preset.max_positions) {
+    if (regimeOk && open.length < preset.max_positions && satBudget > 0) {
       for (const sym of Object.keys(assets)) {
-        if (sym === "BTC") continue;
+        if (coreSet.has(sym)) continue; // mai aprire satellite sui core asset
         if (open.length >= preset.max_positions) break;
         if (open.some((p) => p.asset === sym)) continue;
         const idxArr = assetDates[sym];
@@ -242,8 +270,9 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         if (!s20 || !s50 || !(s20 > s50)) continue;
         const candle = assetIdx[sym]?.get(date);
         if (!candle) continue;
-        const portfolioTotal = cash + mtmValue;
-        const sizeUsd = (preset.max_position_pct / 100) * portfolioTotal;
+        // size relativa al budget satellite (cash + mtm satellite), NON al totale
+        const satPortfolio = cash + mtmValue;
+        const sizeUsd = (preset.max_position_pct / 100) * satPortfolio;
         if (sizeUsd > cash * 0.99) continue;
         if (sizeUsd < 5) continue;
         const entryPrice = candle.close * (1 + slippagePct / 100);
@@ -256,7 +285,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       }
     }
 
-    const equity = cash + mtmValue;
+    const equity = cash + mtmValue + coreValue;
     equityStrategy.push(equity);
     const spxToday = spxIdx.get(date)?.close;
     const spxLast = spxToday ?? (equitySpx.length ? (equitySpx[equitySpx.length - 1] / startCapital) * (spxFirst ?? 1) : (spxFirst ?? btcLast));
