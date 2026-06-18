@@ -220,9 +220,10 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <FlagRow label="Core-only" on={!!data.aiSupervisor.decision?.core_only_mode ?? !!data.settings?.core_only_mode} changed={data.aiSupervisor.changedFlags.includes("core_only_mode")} />
-            <FlagRow label="Bear-DCA" on={!!data.aiSupervisor.decision?.bear_dca_enabled ?? !!data.settings?.bear_dca_enabled} changed={data.aiSupervisor.changedFlags.includes("bear_dca_enabled")} />
-            <FlagRow label="Escludi fiat/oro" on={!!data.aiSupervisor.decision?.exclude_fiat_commodity ?? !!data.settings?.exclude_fiat_commodity} changed={data.aiSupervisor.changedFlags.includes("exclude_fiat_commodity")} />
+            <FlagRow label="Core-only" on={data.aiSupervisor.decision?.core_only_mode ?? !!data.settings?.core_only_mode} changed={data.aiSupervisor.changedFlags.includes("core_only_mode")} />
+            <FlagRow label="Bear-DCA" on={data.aiSupervisor.decision?.bear_dca_enabled ?? !!data.settings?.bear_dca_enabled} changed={data.aiSupervisor.changedFlags.includes("bear_dca_enabled")} />
+            <FlagRow label="Escludi fiat/oro" on={data.aiSupervisor.decision?.exclude_fiat_commodity ?? !!data.settings?.exclude_fiat_commodity} changed={data.aiSupervisor.changedFlags.includes("exclude_fiat_commodity")} />
+
           </div>
           {data.aiSupervisor.reasoning && (
             <div className="text-sm bg-muted/30 rounded-md px-3 py-2 border border-border">
