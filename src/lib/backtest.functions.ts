@@ -10,7 +10,7 @@ import { getPreset, type PresetId } from "./strategy-presets";
 const inputSchema = z.object({
   preset: z.enum(["conservative", "balanced", "aggressive"]),
   years: z.number().int().min(1).max(5),
-  startCapital: z.number().min(10).max(1_000_000).default(200),
+  startCapital: z.number().min(10).max(100_000_000).default(200),
 });
 
 type KpisShape = { totalReturnPct: number; cagr: number; maxDrawdownPct: number; sharpe: number; sortino: number; trades: number; winRatePct: number; profitFactor: number };
