@@ -1,5 +1,6 @@
-// Pure backtest engine. Deterministic, no I/O — accepts pre-loaded OHLC + F&G arrays
-// and returns equity curves + KPIs for strategy / BTC buy&hold / S&P 500 buy&hold.
+// Pure backtest engine v3. Deterministic, no I/O — accepts pre-loaded OHLC + F&G arrays
+// and returns equity curves + KPIs for: strategy, BTC buy&hold, S&P 500, BTC-DCA,
+// BTC trend-core (SMA200), BTC trend + Bear-DCA. Includes a GO-LIVE gate check.
 
 export type Candle = { date: string; close: number };
 export type FgPoint = { date: string; value: number };
@@ -16,15 +17,26 @@ export type PresetParams = {
   regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
 };
 
+export type BearDcaParams = {
+  enabled: boolean;
+  ddTrigger: number;       // e.g. 0.25 = -25% dal massimo a 90gg
+  intervalDays: number;    // ogni quanti giorni una tranche
+  tranchePct: number;      // % del capitale per tranche
+  maxPct: number;          // tetto totale dell'accumulo come % capitale
+  ddWindow: number;        // finestra rolling per il massimo
+  smaPeriod: number;       // periodo SMA del filtro di regime (default 200)
+};
+
 export type BacktestInput = {
   startCapital: number;
   preset: PresetParams;
   btc: Candle[]; // sorted asc by date
   spx: Candle[];
   fg: FgPoint[];
-  assets: Record<string, Candle[]>; // symbol -> candles (incl. BTC if traded)
-  feePct: number; // per side, e.g. 0.4
-  slippagePct: number; // 0.1
+  assets: Record<string, Candle[]>;
+  feePct: number;       // per side, e.g. 0.4 (%)
+  slippagePct: number;  // 0.1 (%)
+  bearDca: BearDcaParams;
 };
 
 export type EquityPoint = {
@@ -32,6 +44,9 @@ export type EquityPoint = {
   strategy: number;
   btc: number;
   spx: number;
+  dca: number;
+  trendCore: number;
+  trendDca: number;
 };
 
 export type Kpis = {
@@ -39,9 +54,17 @@ export type Kpis = {
   cagr: number;
   maxDrawdownPct: number;
   sharpe: number;
+  sortino: number;
   trades: number;
   winRatePct: number;
   profitFactor: number;
+};
+
+export type LiveGateChecks = {
+  profitFactorOk: boolean;       // PF > 1.3
+  sharpeOk: boolean;             // Sharpe > 0.8
+  beatsDcaSharpe: boolean;       // sharpe strategy >= sharpe DCA
+  beatsDcaDrawdown: boolean;     // |maxDD strategy| <= |maxDD DCA|
 };
 
 export type BacktestResult = {
@@ -49,6 +72,11 @@ export type BacktestResult = {
   strategyKpis: Kpis;
   btcKpis: Kpis;
   spxKpis: Kpis;
+  dcaKpis: Kpis;
+  trendCoreKpis: Kpis;
+  trendDcaKpis: Kpis;
+  passesLiveGate: boolean;
+  liveGateChecks: LiveGateChecks;
   tradeLog: Array<{ asset: string; entryDate: string; exitDate: string; pnlPct: number }>;
 };
 
@@ -59,6 +87,17 @@ function sma(values: number[], period: number, endIdx: number): number | null {
   return s / period;
 }
 
+function rollingMax(values: number[], window: number): number[] {
+  const out: number[] = new Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    const start = Math.max(0, i - window + 1);
+    let m = -Infinity;
+    for (let j = start; j <= i; j++) if (values[j] > m) m = values[j];
+    out[i] = m;
+  }
+  return out;
+}
+
 function buildDateIndex<T extends { date: string }>(rows: T[]): Map<string, T> {
   const m = new Map<string, T>();
   for (const r of rows) m.set(r.date, r);
@@ -67,7 +106,7 @@ function buildDateIndex<T extends { date: string }>(rows: T[]): Map<string, T> {
 
 function computeKpis(equity: number[], dates: string[], trades: { pnlPct: number }[]): Kpis {
   if (equity.length < 2) {
-    return { totalReturnPct: 0, cagr: 0, maxDrawdownPct: 0, sharpe: 0, trades: 0, winRatePct: 0, profitFactor: 0 };
+    return { totalReturnPct: 0, cagr: 0, maxDrawdownPct: 0, sharpe: 0, sortino: 0, trades: 0, winRatePct: 0, profitFactor: 0 };
   }
   const totalReturn = equity[equity.length - 1] / equity[0] - 1;
   const years = (new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 86400_000);
@@ -87,6 +126,10 @@ function computeKpis(equity: number[], dates: string[], trades: { pnlPct: number
   const variance = rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length || 1);
   const std = Math.sqrt(variance);
   const sharpe = std > 0 ? (mean / std) * Math.sqrt(365) : 0;
+  const downside = rets.filter((r) => r < 0);
+  const dVar = downside.length > 1 ? downside.reduce((s, r) => s + r * r, 0) / downside.length : 0;
+  const dStd = Math.sqrt(dVar);
+  const sortino = dStd > 0 ? (mean / dStd) * Math.sqrt(365) : 0;
 
   const wins = trades.filter((t) => t.pnlPct > 0);
   const losses = trades.filter((t) => t.pnlPct <= 0);
@@ -99,6 +142,7 @@ function computeKpis(equity: number[], dates: string[], trades: { pnlPct: number
     cagr: cagr * 100,
     maxDrawdownPct: maxDD * 100,
     sharpe,
+    sortino,
     trades: trades.length,
     winRatePct: trades.length ? (wins.length / trades.length) * 100 : 0,
     profitFactor,
@@ -115,10 +159,115 @@ type OpenPos = {
   trailingHigh: number | null;
 };
 
-export function runBacktest(input: BacktestInput): BacktestResult {
-  const { startCapital, preset, btc, spx, fg, assets, feePct, slippagePct } = input;
+// ============ BTC benchmark strategies (single-asset) ============
 
-  // Aligned date axis = BTC's dates (master timeline)
+function feeCost(notional: number, feePct: number, slipPct: number): number {
+  return notional * ((feePct + slipPct) / 100);
+}
+
+function runBuyHold(price: number[], capital: number, feePct: number, slipPct: number): { equity: number[]; trades: { pnlPct: number }[] } {
+  const units = (capital - feeCost(capital, feePct, slipPct)) / price[0];
+  const equity = price.map((p) => units * p);
+  const final = equity[equity.length - 1];
+  return { equity, trades: [{ pnlPct: (final / capital - 1) * 100 }] };
+}
+
+function runDcaBenchmark(price: number[], capital: number, feePct: number, slipPct: number, interval = 7): { equity: number[]; trades: { pnlPct: number }[] } {
+  const n = price.length;
+  const nTranches = Math.max(1, Math.floor(n / interval));
+  const tranche = capital / nTranches;
+  let cash = capital, units = 0, deployed = 0;
+  const equity = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    if (i % interval === 0 && deployed < nTranches && cash >= tranche) {
+      const spend = Math.min(tranche, cash);
+      units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
+      cash -= spend;
+      deployed++;
+    }
+    equity[i] = cash + units * price[i];
+  }
+  const final = equity[n - 1];
+  return { equity, trades: [{ pnlPct: (final / capital - 1) * 100 }] };
+}
+
+function runTrendBtc(
+  price: number[],
+  capital: number,
+  feePct: number,
+  slipPct: number,
+  smaPeriod: number,
+  bearDca: BearDcaParams | null,
+): { equity: number[]; trades: { pnlPct: number }[] } {
+  const n = price.length;
+  // SMA precompute
+  const smaArr = new Array<number | null>(n).fill(null);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += price[i];
+    if (i >= smaPeriod) sum -= price[i - smaPeriod];
+    if (i >= smaPeriod - 1) smaArr[i] = sum / smaPeriod;
+  }
+  const rollHigh = bearDca ? rollingMax(price, bearDca.ddWindow) : null;
+
+  let cash = capital, units = 0;
+  const equity = new Array<number>(n);
+  const trades: { pnlPct: number }[] = [];
+  let inTrend = false;
+  let costBasis = 0;
+  let lastDca = -1e9, dcaDeployed = 0;
+
+  for (let i = 0; i < n; i++) {
+    const inUp = smaArr[i] != null && price[i] > (smaArr[i] as number);
+    if (inUp) {
+      if (!inTrend) {
+        const spend = cash;
+        if (spend > 0) {
+          units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
+          costBasis += spend;
+          cash = 0;
+        }
+        inTrend = true;
+      }
+    } else {
+      if (inTrend) {
+        const proceeds = units * price[i] - feeCost(units * price[i], feePct, slipPct);
+        trades.push({ pnlPct: costBasis > 0 ? ((proceeds - costBasis) / costBasis) * 100 : 0 });
+        cash = proceeds;
+        units = 0;
+        inTrend = false;
+        costBasis = 0;
+        lastDca = -1e9;
+        dcaDeployed = 0;
+      } else if (bearDca && bearDca.enabled && rollHigh) {
+        const dd = price[i] / rollHigh[i] - 1;
+        const budgetLeft = (bearDca.maxPct / 100) * capital - dcaDeployed;
+        if (dd <= -bearDca.ddTrigger && budgetLeft > 0 && (i - lastDca) >= bearDca.intervalDays) {
+          const spend = Math.min((bearDca.tranchePct / 100) * capital, cash, budgetLeft);
+          if (spend > 0) {
+            units += (spend - feeCost(spend, feePct, slipPct)) / price[i];
+            cash -= spend;
+            costBasis += spend;
+            dcaDeployed += spend;
+            lastDca = i;
+          }
+        }
+      }
+    }
+    equity[i] = cash + units * price[i];
+  }
+  if (units > 0) {
+    const proceeds = units * price[n - 1] - feeCost(units * price[n - 1], feePct, slipPct);
+    trades.push({ pnlPct: costBasis > 0 ? ((proceeds - costBasis) / costBasis) * 100 : 0 });
+  }
+  return { equity, trades };
+}
+
+// ============ Main engine ============
+
+export function runBacktest(input: BacktestInput): BacktestResult {
+  const { startCapital, preset, btc, spx, fg, assets, feePct, slippagePct, bearDca } = input;
+
   const dates = btc.map((c) => c.date);
   const btcCloses = btc.map((c) => c.close);
   const spxIdx = buildDateIndex(spx);
@@ -126,7 +275,6 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   const assetIdx: Record<string, Map<string, Candle>> = {};
   for (const sym of Object.keys(assets)) assetIdx[sym] = buildDateIndex(assets[sym]);
 
-  // Pre-compute SMA arrays for each asset
   const assetCloses: Record<string, number[]> = {};
   const assetDates: Record<string, string[]> = {};
   for (const sym of Object.keys(assets)) {
@@ -143,14 +291,12 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   const equitySpx: number[] = [];
   const equityDates: string[] = [];
 
-  // BTC and SPX buy & hold baselines normalized to startCapital
   const btcStart = btcCloses[0];
   const spxFirst = spx.length ? spx[0].close : null;
 
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
 
-    // 1) Update open positions w/ today's close, check exits
     let mtmValue = 0;
     for (let j = open.length - 1; j >= 0; j--) {
       const p = open[j];
@@ -160,7 +306,6 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         continue;
       }
       const price = candle.close;
-      // trailing
       const trailActivate = p.entryPrice * (1 + preset.trailing_activate_pct / 100);
       if (price >= trailActivate) {
         p.trailingHigh = Math.max(p.trailingHigh ?? price, price);
@@ -169,10 +314,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       }
       let exit = false;
       let exitPrice = price;
-      if (price <= p.stop) {
-        exit = true;
-        exitPrice = p.stop;
-      } else if (price >= p.entryPrice * (1 + preset.take_profit_pct / 100)) {
+      if (price <= p.stop) { exit = true; exitPrice = p.stop; }
+      else if (price >= p.entryPrice * (1 + preset.take_profit_pct / 100)) {
         exit = true;
         exitPrice = p.entryPrice * (1 + preset.take_profit_pct / 100);
       }
@@ -189,7 +332,6 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       }
     }
 
-    // 2) Regime check
     const sma50Btc = sma(btcCloses, 50, i);
     const sma200Btc = sma(btcCloses, 200, i);
     const btcLast = btcCloses[i];
@@ -198,10 +340,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     if (preset.regime_filter === "btc_sma50") regimeOk = sma50Btc != null && btcLast > sma50Btc;
     else if (preset.regime_filter === "btc_sma200") regimeOk = sma200Btc != null && btcLast > sma200Btc;
     else if (preset.regime_filter === "fg_only") regimeOk = true;
-    // F&G greed cap (always applied unless 'off')
     if (preset.regime_filter !== "off" && fgVal != null && fgVal > preset.fg_greed_cap) regimeOk = false;
 
-    // 3) Entries
     if (regimeOk && open.length < preset.max_positions) {
       for (const sym of Object.keys(assets)) {
         if (sym === "BTC") continue;
@@ -226,15 +366,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         const stop = entryPrice * (1 - preset.stop_loss_pct / 100);
         cash -= sizeUsd;
         mtmValue += qty * candle.close;
-        open.push({
-          asset: sym,
-          qty,
-          entryPrice,
-          entryValue: sizeUsd,
-          entryDate: date,
-          stop,
-          trailingHigh: null,
-        });
+        open.push({ asset: sym, qty, entryPrice, entryValue: sizeUsd, entryDate: date, stop, trailingHigh: null });
       }
     }
 
@@ -247,22 +379,47 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     equityDates.push(date);
   }
 
+  // BTC benchmark strategies
+  const bh = runBuyHold(btcCloses, startCapital, feePct, slippagePct);
+  const dca = runDcaBenchmark(btcCloses, startCapital, feePct, slippagePct, 7);
+  const tc = runTrendBtc(btcCloses, startCapital, feePct, slippagePct, bearDca.smaPeriod, null);
+  const td = runTrendBtc(btcCloses, startCapital, feePct, slippagePct, bearDca.smaPeriod, bearDca);
+
   const equity: EquityPoint[] = equityDates.map((d, i) => ({
     date: d,
     strategy: equityStrategy[i],
-    btc: equityBtc[i],
+    btc: bh.equity[i],
     spx: equitySpx[i],
+    dca: dca.equity[i],
+    trendCore: tc.equity[i],
+    trendDca: td.equity[i],
   }));
 
-  // Trades for BTC & SPX buy & hold = 1 each
-  const btcTrades = [{ pnlPct: (equityBtc[equityBtc.length - 1] / startCapital - 1) * 100 }];
-  const spxTrades = [{ pnlPct: (equitySpx[equitySpx.length - 1] / startCapital - 1) * 100 }];
+  const strategyKpis = computeKpis(equityStrategy, equityDates, tradeLog);
+  const btcKpis = computeKpis(bh.equity, equityDates, bh.trades);
+  const spxKpis = computeKpis(equitySpx, equityDates, [{ pnlPct: (equitySpx[equitySpx.length - 1] / startCapital - 1) * 100 }]);
+  const dcaKpis = computeKpis(dca.equity, equityDates, dca.trades);
+  const trendCoreKpis = computeKpis(tc.equity, equityDates, tc.trades);
+  const trendDcaKpis = computeKpis(td.equity, equityDates, td.trades);
+
+  const liveGateChecks: LiveGateChecks = {
+    profitFactorOk: strategyKpis.profitFactor > 1.3,
+    sharpeOk: strategyKpis.sharpe > 0.8,
+    beatsDcaSharpe: strategyKpis.sharpe >= dcaKpis.sharpe,
+    beatsDcaDrawdown: Math.abs(strategyKpis.maxDrawdownPct) <= Math.abs(dcaKpis.maxDrawdownPct),
+  };
+  const passesLiveGate = Object.values(liveGateChecks).every(Boolean);
 
   return {
     equity,
-    strategyKpis: computeKpis(equityStrategy, equityDates, tradeLog),
-    btcKpis: computeKpis(equityBtc, equityDates, btcTrades),
-    spxKpis: computeKpis(equitySpx, equityDates, spxTrades),
+    strategyKpis,
+    btcKpis,
+    spxKpis,
+    dcaKpis,
+    trendCoreKpis,
+    trendDcaKpis,
+    passesLiveGate,
+    liveGateChecks,
     tradeLog,
   };
 }
