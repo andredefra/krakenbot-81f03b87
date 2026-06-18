@@ -492,6 +492,7 @@ function KpiCard({ title, kpis, highlight }: { title: string; kpis: KpisShape; h
         <Row label="CAGR" value={`${kpis.cagr >= 0 ? "+" : ""}${kpis.cagr.toFixed(1)}%`} />
         <Row label="Max DD" value={`${kpis.maxDrawdownPct.toFixed(1)}%`} negative />
         <Row label="Sharpe" value={kpis.sharpe.toFixed(2)} />
+        <Row label="Sortino" value={kpis.sortino.toFixed(2)} />
         {kpis.trades > 1 && <Row label="# Trade" value={kpis.trades.toString()} />}
         {kpis.trades > 1 && <Row label="Win rate" value={`${kpis.winRatePct.toFixed(0)}%`} />}
         {kpis.trades > 1 && <Row label="Profit factor" value={kpis.profitFactor.toFixed(2)} />}
