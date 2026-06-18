@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Receipt } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
