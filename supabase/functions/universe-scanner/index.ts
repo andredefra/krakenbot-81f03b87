@@ -14,11 +14,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Asset da escludere dal satellite: core + stablecoin
+// Asset da escludere dal satellite: core + stablecoin (sempre)
 const EXCLUDE = new Set([
   "BTC", "XBT", "ETH",
   "USDT", "USDC", "DAI", "USD", "EUR", "USDS", "PYUSD", "TUSD", "RLUSD",
   "EURT", "GBP", "JPY", "CAD", "AUD", "CHF",
+]);
+// Token tokenizzati di fiat o commodity (oro, argento): esclusi se exclude_fiat_commodity = true (v3)
+const FIAT_COMMODITY = new Set([
+  "PAXG", "XAUT", "ZEUR", "ZUSD", "EURT", "USDP", "USTC", "XAGT",
 ]);
 
 type AssetPair = {
@@ -44,11 +48,13 @@ Deno.serve(async (req) => {
     // Soglie: prendi la più conservativa fra gli utenti attivi (fallback default)
     const { data: settingsRows } = await supa
       .from("settings")
-      .select("min_volume_24h,max_spread_pct,min_listing_age_days,is_running")
+      .select("min_volume_24h,max_spread_pct,min_listing_age_days,is_running,exclude_fiat_commodity")
       .eq("is_running", true);
     const minVol = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_volume_24h)).filter((n) => !Number.isNaN(n)), 5_000_000);
     const maxSpread = Math.min(...(settingsRows ?? []).map((s) => Number(s.max_spread_pct)).filter((n) => !Number.isNaN(n)), 0.3);
     const minAge = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_listing_age_days)).filter((n) => !Number.isNaN(n)), 60);
+    // Se ALMENO uno degli utenti attivi ha attivato exclude_fiat_commodity, applichiamo l'esclusione (conservativo)
+    const excludeFiatCommodity = (settingsRows ?? []).some((s) => Boolean(s.exclude_fiat_commodity));
 
     // 1) Lista coppie
     const apResp = await fetch("https://api.kraken.com/0/public/AssetPairs");
@@ -67,7 +73,7 @@ Deno.serve(async (req) => {
     const pairList: Array<{ key: string; altname: string; base: string }> = usdPairs.map(([key, p]) => {
       const base = (p.base || "").replace(/^X(?=[A-Z]{3,})/, "").replace(/^XBT$/, "BTC");
       return { key, altname: p.altname, base };
-    }).filter((p) => !EXCLUDE.has(p.base));
+    }).filter((p) => !EXCLUDE.has(p.base) && !(excludeFiatCommodity && FIAT_COMMODITY.has(p.base)));
 
     // 2) Ticker batch (Kraken accetta lista, ma per sicurezza spezza)
     const tickers: Record<string, TickerRow> = {};
@@ -132,7 +138,7 @@ Deno.serve(async (req) => {
       if (!uerr) { upserts += 1; if (eligible) eligibleCount += 1; }
     }
 
-    console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d)`);
+    console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d, exclFiatCom=${excludeFiatCommodity})`);
 
     return new Response(JSON.stringify({ ok: true, upserts, eligibleCount, thresholds: { minVol, maxSpread, minAge } }), {
       headers: { ...corsHeaders, "content-type": "application/json" },

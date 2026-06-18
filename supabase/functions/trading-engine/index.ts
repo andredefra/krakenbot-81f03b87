@@ -85,6 +85,18 @@ type Settings = {
   max_satellite_positions?: number;
   macro_ma_period?: number;
   mid_ma_period?: number;
+  monthly_trade_cap?: number;
+  // v3
+  taker_fee_pct?: number;
+  maker_fee_pct?: number;
+  slippage_pct?: number;
+  core_only_mode?: boolean;
+  bear_dca_enabled?: boolean;
+  bear_dca_fg_threshold?: number;
+  bear_dca_cap_pct?: number;
+  bear_dca_tranche_pct?: number;
+  bear_dca_interval_days?: number;
+  exclude_fiat_commodity?: boolean;
 };
 
 type Position = {
@@ -93,7 +105,7 @@ type Position = {
   asset: string;
   status: "open" | "closed";
   mode: "paper" | "live";
-  sleeve?: "core" | "satellite";
+  sleeve?: "core" | "satellite" | "dca";
   entry_price: number;
   entry_value: number;
   qty: number;
@@ -102,12 +114,13 @@ type Position = {
   trailing_high: number | null;
   open_reason: string | null;
   opened_at: string;
+  fee_paid_usd?: number | null;
 };
 
 // Core loop ------------------------------------------------------------------
 async function runCycle(supa: ReturnType<typeof createClient>, settings: Settings) {
   const userId = settings.user_id;
-  await log(supa, userId, "info", "trading-engine", `Ciclo v2 avviato (${settings.mode})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v3 avviato (${settings.mode})`);
 
   const macroPeriod = settings.macro_ma_period ?? 200;
   const midPeriod = settings.mid_ma_period ?? 50;
@@ -115,6 +128,16 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const coreWeights = settings.core_weights ?? { BTC: 0.6, ETH: 0.4 };
   const split = settings.core_satellite_split ?? { core: 0.6, satellite: 0.4 };
   const maxSatPos = settings.max_satellite_positions ?? 2;
+  // v3
+  const takerFeePct = Number(settings.taker_fee_pct ?? 0.4);
+  const coreOnly = Boolean(settings.core_only_mode ?? false);
+  const bdEnabled = Boolean(settings.bear_dca_enabled ?? true);
+  const bdFgThreshold = Number(settings.bear_dca_fg_threshold ?? 22);
+  const bdCapPct = Number(settings.bear_dca_cap_pct ?? 30);
+  const bdTranchePct = Number(settings.bear_dca_tranche_pct ?? 5);
+  const bdIntervalDays = Number(settings.bear_dca_interval_days ?? 14);
+  const monthlyCap = Number(settings.monthly_trade_cap ?? 6);
+  const minTargetPct = Number(settings.min_target_pct ?? 5);
 
   // 1. Posizioni aperte
   const { data: openPos, error: oerr } = await supa
@@ -123,6 +146,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const positions = (openPos ?? []) as Position[];
   const corePos = positions.filter((p) => p.sleeve === "core");
   const satPos = positions.filter((p) => (p.sleeve ?? "satellite") === "satellite");
+  const dcaPos = positions.filter((p) => p.sleeve === "dca");
 
   // 2. Universo eligible (dinamico)
   const { data: universeRows } = await supa
@@ -192,7 +216,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     } else if (price >= p.entry_price * (1 + settings.take_profit_pct / 100)) {
       exitReason = "take profit";
     }
-    if (exitReason) await closePosition(supa, userId, settings, p, price, exitReason);
+    if (exitReason) await closePosition(supa, userId, settings, p, price, exitReason, takerFeePct);
   }
 
   // 8. REGIME MACRO (governa il Core) — BTC vs SMA200
@@ -240,14 +264,16 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       if (!existing && price && targetUsd >= 5 && cash >= targetUsd * 0.99) {
         const qty = targetUsd / price;
         const stop = price * (1 - settings.stop_loss_pct / 100);
+        const entryFee = targetUsd * (takerFeePct / 100);
         const { error: ierr } = await supa.from("positions").insert({
           user_id: userId, asset, status: "open", mode: settings.mode, sleeve: "core",
           entry_price: price, entry_value: targetUsd, qty,
           current_price: price, stop_price: stop, trailing_high: null,
           open_reason: `Core init macro risk-on (target ${(coreWeights[asset] * 100).toFixed(0)}%)`,
+          fee_paid_usd: entryFee,
         });
         if (!ierr) {
-          await log(supa, userId, "info", "trading-engine", `[CORE] Aperta ${asset} ${targetUsd.toFixed(2)} USD`);
+          await log(supa, userId, "info", "trading-engine", `[CORE] Aperta ${asset} ${targetUsd.toFixed(2)} USD (fee ${entryFee.toFixed(2)})`);
           coreHeld.push({ asset, qty, value_usd: targetUsd, weight_actual: targetUsd / Math.max(1, portfolioTotal), weight_target: coreWeights[asset] });
         }
       } else if (existing) {
@@ -259,7 +285,65 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     // Macro risk-off: chiudi tutto il core (sposta in stable)
     for (const p of corePos) {
       const price = prices[p.asset] ?? p.current_price ?? p.entry_price;
-      await closePosition(supa, userId, settings, p, price, "macro risk-off → core in stable");
+      await closePosition(supa, userId, settings, p, price, "macro risk-off → core in stable", takerFeePct);
+    }
+  }
+
+  // 10b. BEAR-DCA ACCUMULATOR (v3)
+  // Apre tranche su BTC quando macro=risk-off E F&G < soglia (paura estrema).
+  // Resta aperto in downtrend; si chiude quando macro torna risk-on (release).
+  const bdState: Record<string, unknown> = {
+    enabled: bdEnabled, active: false, fg: fg?.value ?? null, fg_threshold: bdFgThreshold,
+    deployed_usd: dcaPos.reduce((s, p) => s + Number(p.entry_value), 0),
+    cap_usd: (bdCapPct / 100) * settings.capital_reference,
+    positions: dcaPos.length,
+    last_action: null as string | null,
+  };
+  if (macroOn && dcaPos.length > 0) {
+    // Macro flip → rilascia accumulatore
+    for (const p of dcaPos) {
+      const price = prices[p.asset] ?? p.current_price ?? p.entry_price;
+      await closePosition(supa, userId, settings, p, price, "macro risk-on → release Bear-DCA", takerFeePct);
+    }
+    bdState.last_action = "released_on_macro_risk_on";
+  } else if (!macroOn && bdEnabled && fg && fg.value < bdFgThreshold) {
+    bdState.active = true;
+    const deployedUsd = dcaPos.reduce((s, p) => s + Number(p.entry_value), 0);
+    const capUsd = (bdCapPct / 100) * settings.capital_reference;
+    const budgetLeft = capUsd - deployedUsd;
+    // Ultima tranche aperta (per intervallo)
+    const lastDca = dcaPos.length ? dcaPos.map((p) => new Date(p.opened_at).getTime()).sort((a, b) => b - a)[0] : 0;
+    const daysSince = lastDca ? (Date.now() - lastDca) / 86400000 : 1e9;
+    if (budgetLeft <= 0) {
+      bdState.last_action = "cap_reached";
+    } else if (daysSince < bdIntervalDays) {
+      bdState.last_action = `cooldown ${(bdIntervalDays - daysSince).toFixed(1)}d`;
+    } else {
+      const trancheUsd = Math.min((bdTranchePct / 100) * settings.capital_reference, budgetLeft, cash);
+      const btcPrice = prices["BTC"];
+      if (trancheUsd >= 5 && btcPrice) {
+        const qty = trancheUsd / btcPrice;
+        const entryFee = trancheUsd * (takerFeePct / 100);
+        const reason = `Bear-DCA tranche (F&G ${fg.value} < ${bdFgThreshold}, macro risk-off)`;
+        const { error: ierr } = await supa.from("positions").insert({
+          user_id: userId, asset: "BTC", status: "open", mode: settings.mode, sleeve: "dca",
+          entry_price: btcPrice, entry_value: trancheUsd, qty,
+          current_price: btcPrice, stop_price: null, trailing_high: null,
+          open_reason: reason, fee_paid_usd: entryFee,
+        });
+        if (!ierr) {
+          bdState.last_action = "tranche_opened";
+          await log(supa, userId, "info", "trading-engine", `[BEAR-DCA] Tranche BTC ${trancheUsd.toFixed(2)} USD (deployed ${(deployedUsd + trancheUsd).toFixed(2)}/${capUsd.toFixed(2)})`);
+          await sendTelegram(fmtOpen({
+            mode: settings.mode, asset: "BTC", price: btcPrice, qty, value: trancheUsd,
+            pctOfPortfolio: bdTranchePct, reason, portfolioTotal,
+          }));
+        } else {
+          bdState.last_action = `insert_error: ${ierr.message}`;
+        }
+      } else {
+        bdState.last_action = `budget_or_cash_insufficient (tranche ${trancheUsd.toFixed(2)})`;
+      }
     }
   }
 
@@ -269,7 +353,32 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   let stillOpenSat = satPos.length;
   const candidates: Array<Record<string, unknown>> = [];
 
-  if (mesoOn && stillOpenSat < maxSatPos && !dailyLossExceeded) {
+  // Monthly trade cap: count satellite OPEN positions opened this month
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const { count: openedThisMonth } = await supa
+    .from("positions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("sleeve", "satellite")
+    .gte("opened_at", monthStart.toISOString());
+  const monthlyCapHit = (openedThisMonth ?? 0) >= monthlyCap;
+
+  // Pre-check: minimo target netto ≥ min_target_pct
+  // Take-profit lordo deve coprire fee round-trip + min_target
+  const feeRoundTripPct = takerFeePct * 2;
+  const minTpRequired = minTargetPct + feeRoundTripPct;
+  const tpUnderMin = settings.take_profit_pct < minTpRequired;
+
+  const satBlockReason =
+    coreOnly ? "Core-only mode attivo (satellite disabilitato)" :
+    !mesoOn ? mesoReason :
+    dailyLossExceeded ? `Limite perdita giornaliera superato (${realizedToday.toFixed(2)} USD)` :
+    monthlyCapHit ? `Tetto trade mensile raggiunto (${openedThisMonth}/${monthlyCap})` :
+    tpUnderMin ? `Take-profit ${settings.take_profit_pct}% < min target+fee ${minTpRequired.toFixed(2)}%` :
+    stillOpenSat >= maxSatPos ? `Max posizioni satellite raggiunto (${stillOpenSat}/${maxSatPos})` :
+    "";
+
+  if (!satBlockReason) {
     for (const asset of satelliteUniverse) {
       const baseRow: Record<string, unknown> = {
         asset, price: prices[asset] ?? null, sma20: null, sma50: null,
@@ -300,27 +409,26 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       if (sizeUsd > cash * 0.99) { baseRow.reasonSkipped = `Cash insufficiente (size ${sizeUsd.toFixed(2)} > cash ${cash.toFixed(2)})`; candidates.push(baseRow); continue; }
       const qty = sizeUsd / price;
       const stop = price * (1 - settings.stop_loss_pct / 100);
+      const entryFee = sizeUsd * (takerFeePct / 100);
       const reason = "SAT: SMA20>SMA50 + meso risk-on";
       const { error: ierr } = await supa.from("positions").insert({
         user_id: userId, asset, status: "open", mode: settings.mode, sleeve: "satellite",
         entry_price: price, entry_value: sizeUsd, qty,
         current_price: price, stop_price: stop, trailing_high: null, open_reason: reason,
+        fee_paid_usd: entryFee,
       });
       if (ierr) { baseRow.reasonSkipped = `Errore insert: ${ierr.message}`; candidates.push(baseRow); continue; }
       baseRow.opened = true; candidates.push(baseRow); stillOpenSat += 1;
-      await log(supa, userId, "info", "trading-engine", `[SAT] Aperta ${asset} a ${price.toFixed(4)} size ${sizeUsd.toFixed(2)}`);
+      await log(supa, userId, "info", "trading-engine", `[SAT] Aperta ${asset} a ${price.toFixed(4)} size ${sizeUsd.toFixed(2)} fee ${entryFee.toFixed(2)}`);
       await sendTelegram(fmtOpen({
         mode: settings.mode, asset, price, qty, value: sizeUsd,
         pctOfPortfolio: settings.max_position_pct, reason, portfolioTotal,
       }));
+      if (stillOpenSat >= maxSatPos) break;
     }
   } else {
-    let blockReason = "";
-    if (!mesoOn) blockReason = mesoReason;
-    else if (dailyLossExceeded) blockReason = `Limite perdita giornaliera superato (${realizedToday.toFixed(2)} USD)`;
-    else blockReason = `Max posizioni satellite raggiunto (${stillOpenSat}/${maxSatPos})`;
     for (const asset of satelliteUniverse) {
-      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: blockReason });
+      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: satBlockReason });
     }
   }
 
@@ -362,6 +470,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       positions: satPos.map((p) => ({ asset: p.asset, entry_price: p.entry_price, current_price: p.current_price, qty: p.qty })),
     },
     universe_eligible: universeEligible,
+    bear_dca_state: bdState,
   });
 
   // 13. Snapshot portafoglio finale
@@ -369,7 +478,8 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     .from("positions").select("entry_value,qty,current_price,entry_price,sleeve")
     .eq("user_id", userId).eq("status", "open");
   const finalPosValue = (finalPos ?? []).reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
-  const finalCore = (finalPos ?? []).filter((p) => p.sleeve === "core").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
+  // DCA (Bear-DCA accumulator) viene contato come "core" nell'allocazione (è BTC accumulato)
+  const finalCore = (finalPos ?? []).filter((p) => p.sleeve === "core" || p.sleeve === "dca").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
   const finalSat = (finalPos ?? []).filter((p) => (p.sleeve ?? "satellite") === "satellite").reduce((s, p) => s + Number(p.current_price ?? p.entry_price) * Number(p.qty), 0);
   const finalInvested = (finalPos ?? []).reduce((s, p) => s + Number(p.entry_value), 0);
   const finalCash = Math.max(0, settings.capital_reference + realizedToday - finalInvested);
@@ -381,20 +491,24 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     core_value: finalCore, satellite_value: finalSat,
   });
 
-  await log(supa, userId, "info", "trading-engine", `Ciclo v2 completato totale ${finalTotal.toFixed(2)} (core ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v3 completato totale ${finalTotal.toFixed(2)} (core+dca ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
 }
 
 // Helpers --------------------------------------------------------------------
-async function closePosition(supa: ReturnType<typeof createClient>, userId: string, settings: Settings, p: Position, price: number, reason: string) {
+async function closePosition(supa: ReturnType<typeof createClient>, userId: string, settings: Settings, p: Position, price: number, reason: string, takerFeePct = 0.4) {
   const exitValue = price * p.qty;
-  const pnl = exitValue - Number(p.entry_value);
+  const exitFee = exitValue * (takerFeePct / 100);
+  const entryFee = Number(p.fee_paid_usd ?? 0);
+  const totalFee = entryFee + exitFee;
+  const pnl = exitValue - Number(p.entry_value) - exitFee; // net of exit fee
   const pnlPct = (pnl / Number(p.entry_value)) * 100;
   const closedAt = new Date().toISOString();
   await supa.from("positions").update({
     status: "closed", exit_price: price, exit_value: exitValue,
     pnl, pnl_pct: pnlPct, exit_reason: reason, closed_at: closedAt,
+    fee_paid_usd: totalFee,
   }).eq("id", p.id);
-  await log(supa, userId, "info", "trading-engine", `Chiuso ${p.asset} (${reason}) P/L ${pnl.toFixed(2)}`);
+  await log(supa, userId, "info", "trading-engine", `Chiuso ${p.asset} (${reason}) P/L ${pnl.toFixed(2)} fee ${totalFee.toFixed(2)}`);
   await sendTelegram(fmtClose({
     mode: settings.mode, asset: p.asset, win: pnl >= 0,
     entryValue: Number(p.entry_value), entryPrice: Number(p.entry_price),
