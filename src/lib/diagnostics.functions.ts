@@ -99,7 +99,7 @@ export const getDiagnostics = createServerFn({ method: "GET" })
       supabase.from("engine_diagnostics").select("*").eq("user_id", userId).maybeSingle(),
       supabase
         .from("settings")
-        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct")
+        .select("is_running,mode,max_positions,max_satellite_positions,regime_filter,fg_greed_cap,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,bear_dca_fg_threshold,bear_dca_cap_pct,ai_supervisor_state")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
