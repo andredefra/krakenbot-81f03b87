@@ -65,10 +65,12 @@ function HistoryPage() {
                   <TableRow>
                     <TableHead>Chiuso</TableHead>
                     <TableHead>Asset</TableHead>
+                    <TableHead>Sleeve</TableHead>
                     <TableHead>Mod.</TableHead>
                     <TableHead className="text-right">Ingresso</TableHead>
                     <TableHead className="text-right">Uscita</TableHead>
-                    <TableHead className="text-right">P/L</TableHead>
+                    <TableHead className="text-right">P/L netto</TableHead>
+                    <TableHead className="text-right">Fee</TableHead>
                     <TableHead>Durata</TableHead>
                     <TableHead>Motivo</TableHead>
                   </TableRow>
@@ -77,10 +79,19 @@ function HistoryPage() {
                   {q.data!.map((p) => {
                     const pnl = Number(p.pnl ?? 0);
                     const pnlPct = Number(p.pnl_pct ?? 0);
+                    const sleeve = (p.sleeve ?? "satellite") as "core" | "satellite" | "dca";
+                    const sleeveBadge =
+                      sleeve === "core"
+                        ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
+                        : sleeve === "dca"
+                        ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                        : "bg-amber-500/15 text-amber-400 border-amber-500/30";
+                    const sleeveLabel = sleeve === "dca" ? "BEAR-DCA" : sleeve.toUpperCase();
                     return (
                       <TableRow key={p.id}>
                         <TableCell className="text-sm text-muted-foreground">{formatDateTime(p.closed_at)}</TableCell>
                         <TableCell className="font-medium">{p.asset}</TableCell>
+                        <TableCell><Badge variant="outline" className={`text-xs ${sleeveBadge}`}>{sleeveLabel}</Badge></TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">{p.mode.toUpperCase()}</Badge>
                         </TableCell>
@@ -89,6 +100,7 @@ function HistoryPage() {
                         <TableCell className={`text-right tabular ${pnlClass(pnl)}`}>
                           {formatUsd(pnl, { signed: true })} <span className="text-xs opacity-80">({formatPct(pnlPct, { signed: true })})</span>
                         </TableCell>
+                        <TableCell className="text-right tabular text-muted-foreground">{p.fee_paid_usd != null ? formatUsd(Number(p.fee_paid_usd)) : "—"}</TableCell>
                         <TableCell className="text-sm">{formatDuration(p.opened_at, p.closed_at)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{p.exit_reason ?? "—"}</TableCell>
                       </TableRow>

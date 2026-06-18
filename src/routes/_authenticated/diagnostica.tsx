@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
@@ -153,14 +153,51 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
         </CardContent>
       </Card>
 
+      {/* BEAR-DCA accumulator */}
+      <Card className={data.bearDca.active ? "border-blue-500/40" : ""}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Droplets className="size-5" /> Bear-DCA accumulator
+              </CardTitle>
+              <CardDescription>
+                Tranche BTC quando macro = risk-off e F&G &lt; {data.bearDca.fgThreshold}. Si liquida al ritorno risk-on.
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {!data.bearDca.enabled ? (
+                <Badge variant="outline" className="text-xs">DISABILITATO</Badge>
+              ) : data.bearDca.active ? (
+                <Badge className="bg-blue-500/15 text-blue-500 border-blue-500/30" variant="outline">
+                  ● ACCUMULO IN CORSO
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">In attesa</Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Kpi label="Deployato" value={`$${data.bearDca.deployedUsd.toLocaleString("it-IT", { maximumFractionDigits: 0 })}`} />
+          <Kpi label="Cap massimo" value={`$${data.bearDca.capUsd.toLocaleString("it-IT", { maximumFractionDigits: 0 })}`} suffix={`${data.bearDca.capPct}%`} />
+          <Kpi label="Tranche aperte" value={data.bearDca.tranches.toString()} />
+          <Kpi label="Ultima azione" value={data.bearDca.lastActionAt ? new Date(data.bearDca.lastActionAt).toLocaleString("it-IT") : "—"} />
+        </CardContent>
+      </Card>
+
       {/* Bot status */}
       <Card>
         <CardHeader><CardTitle className="text-base">Stato bot</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Kpi label="Running" value={data.settings?.is_running ? "Sì" : "No"} />
           <Kpi label="Modalità" value={data.settings?.mode?.toUpperCase() ?? "—"} />
-          <Kpi label="Max satellite" value={data.settings?.max_satellite_positions?.toString() ?? "—"} />
-          <Kpi label="Tot. posizioni aperte" value={`${data.openPositions}`} />
+          <Kpi label="Max satellite" value={data.settings?.core_only_mode ? "CORE-ONLY" : (data.settings?.max_satellite_positions?.toString() ?? "—")} />
+          <Kpi label="Pos. aperte" value={`${data.openPositions}`} />
+          <Kpi label="Fee totali pagate" value={`$${data.totalFeesUsd.toLocaleString("it-IT", { maximumFractionDigits: 2 })}`} />
+          <Kpi label="Preset" value={data.settings?.strategy_preset ?? "—"} />
+          <Kpi label="Filtro fiat/oro" value={data.settings?.exclude_fiat_commodity ? "Attivo" : "Off"} />
+          <Kpi label="Bear-DCA" value={data.settings?.bear_dca_enabled ? "On" : "Off"} />
         </CardContent>
       </Card>
 

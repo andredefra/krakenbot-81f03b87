@@ -163,17 +163,33 @@ function DashboardPage() {
               <div className="text-sm text-muted-foreground">—</div>
             ) : (
               <>
-                <Badge variant="outline" className={mesoOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"}>
-                  ● {mesoOn ? "RISK-ON" : "RISK-OFF"}
-                </Badge>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge variant="outline" className={mesoOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"}>
+                    ● {mesoOn ? "RISK-ON" : "RISK-OFF"}
+                  </Badge>
+                  {diag.bearDca.active && (
+                    <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs">
+                      ● ACCUMULO IN CORSO
+                    </Badge>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground mt-2" title={diag.meso.reason ?? ""}>
-                  Satellite {diag.satellite.open}/{diag.satellite.max} · F&G {fgQuery.data?.score != null ? Math.round(fgQuery.data.score) : "—"} {fgLabel !== "—" ? `(${fgLabel})` : ""}
+                  {diag.settings?.core_only_mode ? "Core-only" : `Satellite ${diag.satellite.open}/${diag.satellite.max}`} · F&G {fgQuery.data?.score != null ? Math.round(fgQuery.data.score) : "—"} {fgLabel !== "—" ? `(${fgLabel})` : ""}
+                  {diag.bearDca.active && diag.bearDca.capUsd > 0 && (
+                    <> · DCA ${Math.round(diag.bearDca.deployedUsd)}/${Math.round(diag.bearDca.capUsd)}</>
+                  )}
                 </div>
               </>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {diag && diag.totalFeesUsd > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Fee Kraken totali pagate (tutte le posizioni): <span className="font-medium text-foreground">{formatUsd(diag.totalFeesUsd)}</span>
+        </div>
+      )}
 
       {universeEmpty && (
         <div className="flex items-center gap-2 text-sm text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
