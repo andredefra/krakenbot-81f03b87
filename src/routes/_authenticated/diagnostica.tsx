@@ -365,3 +365,17 @@ function Kpi({ label, value, suffix }: { label: string; value: string; suffix?: 
     </div>
   );
 }
+
+function FlagRow({ label, on, changed }: { label: string; on: boolean; changed: boolean }) {
+  return (
+    <div className={`flex items-center justify-between rounded-md border px-3 py-2 ${changed ? "border-blue-500/40 bg-blue-500/5" : "border-border bg-muted/20"}`}>
+      <div className="text-sm font-medium">{label}</div>
+      <div className="flex items-center gap-2">
+        {changed && <span className="text-[10px] uppercase tracking-wide text-blue-400">cambiato</span>}
+        <Badge variant="outline" className={on ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-muted text-muted-foreground"}>
+          {on ? "ON" : "OFF"}
+        </Badge>
+      </div>
+    </div>
+  );
+}
