@@ -284,7 +284,7 @@ function BacktestSection() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
-            <CardDescription>Strategia v2 simulata vs BTC buy &amp; hold e benchmark S&amp;P 500</CardDescription>
+            <CardDescription>Strategia v3 vs BTC Buy &amp; Hold, DCA, Trend, Trend+BearDCA e S&amp;P 500</CardDescription>
           </div>
         </div>
       </CardHeader>
