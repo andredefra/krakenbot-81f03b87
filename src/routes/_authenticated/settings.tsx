@@ -88,12 +88,10 @@ const SECTIONS: Section[] = [
   },
 ];
 
-type ToggleField = { key: string; label: string; help?: string };
-const TOGGLE_FIELDS: ToggleField[] = [
-  { key: "core_only_mode", label: "Modalità core-only", help: "Spegne completamente il satellite — tiene solo il core BTC/ETH" },
-  { key: "bear_dca_enabled", label: "Bear-DCA attivo", help: "Accumula in deep fear (F&G sotto la soglia). Attivare solo se in backtest batte il trend puro su Sharpe E MaxDD" },
-  { key: "exclude_fiat_commodity", label: "Escludi token fiat/commodity dal satellite", help: "Esclude es. ZEUR, USDT, USDC, PAXG, XAUT, EURT dall'universo satellite" },
-];
+// AI-managed flags (core_only_mode, bear_dca_enabled, exclude_fiat_commodity)
+// are NOT exposed here — they are decided automatically by the AI Supervisor
+// (hourly cron) based on the active preset + market conditions.
+// Read-only view available in /diagnostica.
 
 const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 
