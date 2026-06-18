@@ -105,7 +105,7 @@ type Position = {
   asset: string;
   status: "open" | "closed";
   mode: "paper" | "live";
-  sleeve?: "core" | "satellite";
+  sleeve?: "core" | "satellite" | "dca";
   entry_price: number;
   entry_value: number;
   qty: number;
@@ -114,6 +114,7 @@ type Position = {
   trailing_high: number | null;
   open_reason: string | null;
   opened_at: string;
+  fee_paid_usd?: number | null;
 };
 
 // Core loop ------------------------------------------------------------------
