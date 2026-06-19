@@ -220,46 +220,55 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
       const apiKey = process.env.KRAKEN_API_KEY;
       const apiSecret = process.env.KRAKEN_API_SECRET;
       try {
-        const balance = await fetchKrakenBalance(apiKey ?? "", apiSecret ?? "");
-        // Aggrega per symbol normalizzato
-        const aggregated: Record<string, number> = {};
-        for (const [rawAsset, val] of Object.entries(balance)) {
-          const qty = Number(val);
-          if (!Number.isFinite(qty) || qty === 0) continue;
-          const sym = normalizeKrakenAsset(rawAsset);
-          aggregated[sym] = (aggregated[sym] ?? 0) + qty;
-        }
-        const cryptoSymbols = Object.keys(aggregated).filter((s) => !isFiat(s));
-        const prices = await priceMapForCrypto(cryptoSymbols);
-
-        const cryptoItems: PortfolioItem[] = [];
+        const snapshot = await loadLivePortfolioSnapshot(apiKey ?? "", apiSecret ?? "");
+        const byClass = new Map<AssetClass, PortfolioItem[]>();
         let cashUsd = 0;
-        const warnings: string[] = [];
-        for (const [sym, qty] of Object.entries(aggregated)) {
+        const warnings = [...snapshot.warnings];
+        for (const [sym, qty] of Object.entries(snapshot.balances)) {
           if (isFiat(sym)) {
             // converto qualsiasi fiat in USD: USD 1:1, altri fiat → skip (warning)
             if (sym === "USD") cashUsd += qty;
             else warnings.push(`Saldo in ${sym} (${qty}) non convertito in USD — aggiungi conversione manuale.`);
             continue;
           }
-          const px = prices[sym];
+          const assetClass = classifyAsset(sym);
+          const px = snapshot.prices[sym];
           if (px == null) {
             warnings.push(`Prezzo USD non trovato per ${sym} — voce esclusa dal totale.`);
-            cryptoItems.push({ symbol: sym, qty, priceUsd: null, valueUsd: 0, assetClass: "crypto" });
+            if (!byClass.has(assetClass)) byClass.set(assetClass, []);
+            byClass.get(assetClass)!.push({ symbol: sym, qty, priceUsd: null, valueUsd: 0, assetClass });
             continue;
           }
-          cryptoItems.push({ symbol: sym, qty, priceUsd: px, valueUsd: qty * px, assetClass: "crypto" });
+          if (!byClass.has(assetClass)) byClass.set(assetClass, []);
+          byClass.get(assetClass)!.push({ symbol: sym, qty, priceUsd: px, valueUsd: qty * px, assetClass });
         }
-        const cryptoValue = cryptoItems.reduce((a, i) => a + i.valueUsd, 0);
-        const totalValueUsd = cryptoValue + cashUsd;
+        const positionsValue = [...byClass.values()].flat().reduce((a, i) => a + i.valueUsd, 0);
+        const totalValueUsd = positionsValue + cashUsd;
 
         const classes: PortfolioClassSlice[] = [];
         if (cashUsd > 0) classes.push({ assetClass: "cash", valueUsd: cashUsd, items: [{ symbol: "USD", qty: cashUsd, priceUsd: 1, valueUsd: cashUsd, assetClass: "cash" }] });
-        if (cryptoItems.length > 0) classes.push({ assetClass: "crypto", valueUsd: cryptoValue, items: cryptoItems.sort((a, b) => b.valueUsd - a.valueUsd) });
+        for (const [assetClass, items] of byClass) {
+          classes.push({ assetClass, valueUsd: items.reduce((a, i) => a + i.valueUsd, 0), items: items.sort((a, b) => b.valueUsd - a.valueUsd) });
+        }
 
         return { ok: true, source: "kraken-live", mode, totalValueUsd, cashUsd, classes, fetchedAt, warnings };
       } catch (e) {
         if (e instanceof KrakenApiError) {
+          console.error("[getLivePortfolio] kraken", { code: e.code, httpStatus: e.httpStatus, errors: e.krakenErrors });
+          if (e.code.includes("Permission denied")) {
+            try {
+              const tradeBalance = await fetchKrakenTradeBalance(apiKey ?? "", apiSecret ?? "");
+              const totalValueUsd = Number(tradeBalance.eb ?? 0);
+              return {
+                ok: true, source: "kraken-live", mode, totalValueUsd, cashUsd: 0,
+                classes: totalValueUsd > 0 ? [{ assetClass: "cash", valueUsd: totalValueUsd, items: [{ symbol: "USD_EQUIV", qty: totalValueUsd, priceUsd: 1, valueUsd: totalValueUsd, assetClass: "cash" }] }] : [],
+                fetchedAt,
+                warnings: [`BalanceEx non autorizzato (${e.message}); usato TradeBalance come fallback.`],
+              };
+            } catch (fallbackErr) {
+              console.error("[getLivePortfolio] tradeBalance fallback failed", krakenErrorDto(fallbackErr));
+            }
+          }
           return {
             ok: false, source: "kraken-live", mode,
             error: { code: e.code, message: e.message, httpStatus: e.httpStatus, krakenErrors: e.krakenErrors, hint: e.hint },
