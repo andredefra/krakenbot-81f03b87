@@ -220,6 +220,35 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+const SENTIMENT_LABELS: Record<string, string> = {
+  fear_greed: "F&G",
+  lunarcrush: "LunarCrush",
+  santiment: "Santiment",
+  finnhub_news: "Finnhub",
+  alpha_vantage_news: "Alpha Vantage",
+  news: "News",
+};
+
+function SentimentMix({ presetId }: { presetId: PresetId }) {
+  if (presetId === "custom") return null;
+  const base = SENTIMENT_BASE[presetId];
+  const top = Object.entries(base)
+    .filter(([, w]) => w > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+  return (
+    <div className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+      <span className="font-medium text-foreground">Sentiment base:</span>{" "}
+      {top.map(([k, w], i) => (
+        <span key={k} className="tabular-nums">
+          {SENTIMENT_LABELS[k] ?? k} {Math.round(w * 100)}%{i < top.length - 1 ? " · " : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+
 function DiffTable({ current, preset }: { current: Record<string, unknown>; preset: StrategyPreset }) {
   const v = preset.values!;
   const coreSplit = v.core_satellite_split.core;
