@@ -282,11 +282,13 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
       }
     }
   } else {
-    // Macro risk-off: chiudi tutto il core (sposta in stable)
-    for (const p of corePos) {
+    // Macro risk-off: chiudi solo gli asset core riconosciuti (BTC/ETH per default).
+    // Eventuali altri asset con sleeve='core' (es. seed da Kraken) NON vengono toccati qui.
+    for (const p of corePos.filter((x) => coreAssets.includes(x.asset))) {
       const price = prices[p.asset] ?? p.current_price ?? p.entry_price;
       await closePosition(supa, userId, settings, p, price, "macro risk-off → core in stable", takerFeePct);
     }
+
   }
 
   // 10b. BEAR-DCA ACCUMULATOR (v3)
