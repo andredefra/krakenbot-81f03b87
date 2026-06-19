@@ -11,6 +11,8 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { TrendingUp, TrendingDown, Compass, Activity, Gauge, AlertCircle } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 import { getDiagnostics } from "@/lib/diagnostics.functions";
+import { getLivePortfolio } from "@/lib/portfolio.functions";
+import { PortfolioPieChart } from "@/components/dashboard/PortfolioPieChart";
 
 type Timeframe = "1H" | "1D" | "1M" | "3M" | "1Y" | "ALL";
 const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
@@ -65,6 +67,13 @@ function DashboardPage() {
     refetchInterval: 60_000,
   });
 
+  const fetchPortfolio = useServerFn(getLivePortfolio);
+  const portfolioQuery = useQuery({
+    queryKey: ["live-portfolio", mode],
+    queryFn: () => fetchPortfolio(),
+    refetchInterval: 60_000,
+  });
+
   useEffect(() => {
     const channel = supabase
       .channel("dashboard-portfolio")
@@ -108,10 +117,24 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <KpiCard
-          title="Valore portafoglio"
+          title={`Valore portafoglio (${portfolioQuery.data?.source === "kraken-live" ? "LIVE" : "PAPER"})`}
           icon={<Gauge className="size-4" />}
-          value={formatUsd(latest?.total_value ?? null)}
-          loading={snapshotsQuery.isLoading}
+          value={
+            portfolioQuery.data?.ok
+              ? formatUsd(portfolioQuery.data.totalValueUsd)
+              : portfolioQuery.data?.ok === false
+                ? "Errore"
+                : "—"
+          }
+          sub={
+            portfolioQuery.data?.ok === false
+              ? portfolioQuery.data.error.message.slice(0, 80)
+              : portfolioQuery.data?.ok
+                ? `agg. ${new Date(portfolioQuery.data.fetchedAt).toLocaleTimeString("it-IT")}`
+                : undefined
+          }
+          valueClass={portfolioQuery.data?.ok === false ? "text-red-500" : undefined}
+          loading={portfolioQuery.isLoading}
         />
         <KpiCard
           title="Variazione 24h"
@@ -225,6 +248,12 @@ function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <PortfolioPieChart
+        data={portfolioQuery.data}
+        loading={portfolioQuery.isLoading}
+        onRefresh={() => portfolioQuery.refetch()}
+      />
     </div>
   );
 }

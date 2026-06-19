@@ -5,6 +5,15 @@
 
 export type PresetId = "conservative" | "balanced" | "aggressive" | "custom";
 
+// V4: ripartizione tra classi di asset (somma = 1).
+// stocks/futures/forex sono PAPER-ONLY finché non integriamo un broker dedicato.
+export type AssetClassSplit = {
+  crypto: number;
+  stocks: number;
+  futures: number;
+  forex: number;
+};
+
 export type PresetValues = {
   // Allocazione
   core_satellite_split: { core: number; satellite: number };
@@ -42,6 +51,12 @@ export type PresetValues = {
   max_positions: number;       // = max_satellite_positions
   max_position_pct: number;    // ≈ risk_per_trade_pct * 10 (size indicativa)
   stop_loss_pct: number;       // = stop_min_pct (floor)
+
+  // V4 — multi-asset
+  asset_class_split: AssetClassSplit;
+  stocks_universe: string[];
+  futures_universe: string[];
+  forex_universe: string[];
 };
 
 export type PresetDescription = {
@@ -102,6 +117,10 @@ export const PRESETS: StrategyPreset[] = [
       max_positions: 1,
       max_position_pct: 15,
       stop_loss_pct: 12,
+      asset_class_split: { crypto: 0.60, stocks: 0.35, futures: 0.00, forex: 0.05 },
+      stocks_universe: ["SPY", "VTI", "QQQ"],
+      futures_universe: [],
+      forex_universe: ["EURUSD"],
     },
     description: {
       summary:
@@ -154,6 +173,10 @@ export const PRESETS: StrategyPreset[] = [
       max_positions: 2,
       max_position_pct: 25,
       stop_loss_pct: 12,
+      asset_class_split: { crypto: 0.50, stocks: 0.30, futures: 0.10, forex: 0.10 },
+      stocks_universe: ["SPY", "QQQ", "IWM", "EFA"],
+      futures_universe: ["ES", "NQ"],
+      forex_universe: ["EURUSD", "GBPUSD", "USDJPY"],
     },
     description: {
       summary:
@@ -206,6 +229,10 @@ export const PRESETS: StrategyPreset[] = [
       max_positions: 3,
       max_position_pct: 35,
       stop_loss_pct: 10,
+      asset_class_split: { crypto: 0.45, stocks: 0.25, futures: 0.20, forex: 0.10 },
+      stocks_universe: ["SPY", "QQQ", "IWM", "EFA", "EEM", "ARKK"],
+      futures_universe: ["ES", "NQ", "RTY", "CL"],
+      forex_universe: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD"],
     },
     description: {
       summary:

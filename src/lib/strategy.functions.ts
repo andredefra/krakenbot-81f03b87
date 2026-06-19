@@ -52,6 +52,11 @@ export const applyStrategyPreset = createServerFn({ method: "POST" })
       stop_loss_pct: v.stop_loss_pct,
       sentiment_weights,
       strategy_preset: preset.id,
+      // V4 multi-asset
+      asset_class_split: v.asset_class_split,
+      stocks_universe: v.stocks_universe,
+      futures_universe: v.futures_universe,
+      forex_universe: v.forex_universe,
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await context.supabase
