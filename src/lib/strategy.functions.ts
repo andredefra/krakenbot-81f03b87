@@ -68,7 +68,7 @@ export const applyStrategyPreset = createServerFn({ method: "POST" })
       user_id: context.userId,
       level: "info",
       component: "strategy",
-      message: `Preset v2 applicato: ${preset.name}`,
+      message: `Preset v4 applicato: ${preset.name}`,
     });
     return { ok: true, preset: preset.id };
   });
