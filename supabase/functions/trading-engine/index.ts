@@ -511,24 +511,39 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
 
 // Helpers --------------------------------------------------------------------
 async function closePosition(supa: ReturnType<typeof createClient>, userId: string, settings: Settings, p: Position, price: number, reason: string, takerFeePct = 0.4) {
-  const exitValue = price * p.qty;
+  const safePrice = Number.isFinite(price) ? Number(price) : Number(p.current_price ?? p.entry_price ?? 0);
+  const exitValue = safePrice * Number(p.qty);
   const exitFee = exitValue * (takerFeePct / 100);
   const entryFee = Number(p.fee_paid_usd ?? 0);
   const totalFee = entryFee + exitFee;
   const pnl = exitValue - Number(p.entry_value) - exitFee; // net of exit fee
-  const pnlPct = (pnl / Number(p.entry_value)) * 100;
+  const pnlPct = Number(p.entry_value) > 0 ? (pnl / Number(p.entry_value)) * 100 : 0;
   const closedAt = new Date().toISOString();
   await supa.from("positions").update({
-    status: "closed", exit_price: price, exit_value: exitValue,
+    status: "closed", exit_price: safePrice, exit_value: exitValue,
     pnl, pnl_pct: pnlPct, exit_reason: reason, closed_at: closedAt,
     fee_paid_usd: totalFee,
   }).eq("id", p.id);
   await log(supa, userId, "info", "trading-engine", `Chiuso ${p.asset} (${reason}) P/L ${pnl.toFixed(2)} fee ${totalFee.toFixed(2)}`);
+
+  // Stima portafoglio post-chiusura (per il messaggio Telegram). Best-effort.
+  let portfolioTotal = 0;
+  try {
+    const { data: rest } = await supa.from("positions")
+      .select("entry_value,qty,current_price,entry_price")
+      .eq("user_id", userId).eq("status", "open");
+    const posVal = (rest ?? []).reduce((s, r) => s + Number(r.current_price ?? r.entry_price ?? 0) * Number(r.qty ?? 0), 0);
+    const invested = (rest ?? []).reduce((s, r) => s + Number(r.entry_value ?? 0), 0);
+    const cashApprox = Math.max(0, Number(settings.capital_reference ?? 0) - invested);
+    portfolioTotal = posVal + cashApprox;
+  } catch (_e) { /* ignore: meglio messaggio incompleto che ciclo saltato */ }
+
   await sendTelegram(fmtClose({
     mode: settings.mode, asset: p.asset, win: pnl >= 0,
     entryValue: Number(p.entry_value), entryPrice: Number(p.entry_price),
-    exitValue, exitPrice: price, pnl, pnlPct,
+    exitValue, exitPrice: safePrice, pnl, pnlPct,
     duration: durationStr(p.opened_at, closedAt), reason,
+    portfolioTotal,
   }));
 }
 
