@@ -287,7 +287,7 @@ async function runSeedPaperFromKraken(
       user_id: userId,
       asset: sym,
       asset_class: assetClass,
-      sleeve: "core",
+      sleeve: coreSymbols.has(sym) ? "core" : "satellite",
       side: "long",
       status: "open",
       mode: "paper",
