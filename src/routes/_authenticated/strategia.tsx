@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { PRESETS, type PresetId, type StrategyPreset } from "@/lib/strategy-presets";
+import { PRESETS, SENTIMENT_BASE, type PresetId, type StrategyPreset } from "@/lib/strategy-presets";
 import { applyStrategyPreset } from "@/lib/strategy.functions";
 import { runBacktestFn } from "@/lib/backtest.functions";
 
