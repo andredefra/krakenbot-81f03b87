@@ -148,7 +148,7 @@ export const PRESETS: StrategyPreset[] = [
   {
     id: "balanced",
     name: "Bilanciato",
-    tagline: "Default v3 — 70% core, 30% satellite severo",
+    tagline: "Default v4 multi-asset — 70% core, 30% satellite severo",
     risk: "Media",
     variance: "Media",
     expected: "Mira a Sharpe più alto del buy & hold con fee reali",
@@ -181,7 +181,7 @@ export const PRESETS: StrategyPreset[] = [
     },
     description: {
       summary:
-        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v3: meno frequenza = meno drag da commissioni reali Kraken.",
+        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v4 multi-asset: meno frequenza = meno drag da commissioni reali Kraken.",
       assets: ["Core: BTC, ETH", "Satellite: universo Kraken filtrato (no fiat/commodity)"],
       entryRules: [
         "Macro: BTC sopra SMA200 (core investito)",
