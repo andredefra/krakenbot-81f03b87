@@ -235,12 +235,12 @@ export const seedPaperFromKraken = createServerFn({ method: "POST" })
 
 // Logica condivisa: chiama Kraken, salva positions + snapshot + settings.
 async function runSeedPaperFromKraken(
-  supabase: Awaited<ReturnType<typeof import("@/integrations/supabase/auth-middleware").requireSupabaseAuth.callable>>["context"]["supabase"] extends infer S ? S : never,
+  supabase: import("@supabase/supabase-js").SupabaseClient,
   userId: string,
   opts: { force: boolean },
 ) {
-  // Use a generic supabase type to avoid coupling to the auth-middleware return shape
-  const sb = supabase as unknown as import("@supabase/supabase-js").SupabaseClient;
+  const sb = supabase;
+
   const { data: existing } = await sb
     .from("settings")
     .select("paper_seeded_at, paper_seed_total_usd, paper_seed_cash_usd")
