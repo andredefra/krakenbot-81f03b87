@@ -109,8 +109,10 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const bearCapPct = Number(s.bear_dca_cap_pct ?? 30);
     const bearTranchePct = Number(s.bear_dca_tranche_pct ?? 5);
     const bearIntervalDays = Number(s.bear_dca_interval_days ?? 14);
+    const bearFgThreshold = Number(s.bear_dca_fg_threshold ?? 22);
 
-    const input_hash = `${hashInput(data)}|fee${feePct}|slip${slippagePct}|bd${bearEnabled ? 1 : 0}|${bearCapPct}/${bearTranchePct}/${bearIntervalDays}`;
+    const input_hash = `v7|${hashInput(data)}|fee${feePct}|slip${slippagePct}|bd${bearEnabled ? 1 : 0}|${bearCapPct}/${bearTranchePct}/${bearIntervalDays}/${bearFgThreshold}`;
+
 
     // Check cache
     const cached = await supabase
