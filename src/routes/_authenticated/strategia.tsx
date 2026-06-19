@@ -48,7 +48,7 @@ function StrategiaPage() {
   const applyMut = useMutation({
     mutationFn: (preset: PresetId) => apply({ data: { preset: preset as "conservative" | "balanced" | "aggressive" } }),
     onSuccess: () => {
-      toast.success("Preset v2 applicato — parametri e pesi sentiment aggiornati");
+      toast.success("Preset v4 applicato — parametri, allocazione asset class e pesi sentiment aggiornati");
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore"),
