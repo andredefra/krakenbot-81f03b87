@@ -416,3 +416,62 @@ function FlagRow({ label, on, changed }: { label: string; on: boolean; changed: 
     </div>
   );
 }
+
+function KrakenConnectionCard() {
+  const testFn = useServerFn(testKrakenConnection);
+  const m = useMutation({ mutationFn: () => testFn() });
+  const res = m.data;
+  return (
+    <Card className={res?.ok ? "border-green-500/40" : res?.ok === false ? "border-red-500/40" : ""}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Plug className="size-5" /> Connessione Kraken
+          </CardTitle>
+          <CardDescription>
+            Chiama <code>/0/private/Balance</code> con KRAKEN_API_KEY / KRAKEN_API_SECRET dai Secrets. Riporta il vero errore Kraken (non un generico).
+          </CardDescription>
+        </div>
+        <Button size="sm" onClick={() => m.mutate()} disabled={m.isPending}>
+          <RefreshCw className={`size-4 ${m.isPending ? "animate-spin" : ""}`} /> Test connessione
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {!res && !m.isPending && (
+          <div className="text-sm text-muted-foreground">Premi "Test connessione" per verificare le credenziali Kraken.</div>
+        )}
+        {m.isPending && <Skeleton className="h-12 w-full" />}
+        {res?.ok && (
+          <div className="space-y-2">
+            <Badge className="bg-green-500/15 text-green-500 border-green-500/30" variant="outline">
+              <CheckCircle2 className="size-3 mr-1" /> Connessione OK
+            </Badge>
+            <div className="text-sm">
+              Asset con saldo: <strong>{res.assetsWithBalance}</strong>
+              {res.sampleAssets.length > 0 && (
+                <span className="text-muted-foreground"> · {res.sampleAssets.map((a) => `${a.asset}=${a.qty}`).join(", ")}</span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">Risposta ricevuta alle {new Date(res.finishedAt).toLocaleString("it-IT")}</div>
+          </div>
+        )}
+        {res?.ok === false && (
+          <div className="space-y-2">
+            <Badge className="bg-red-500/15 text-red-500 border-red-500/30" variant="outline">
+              <XCircle className="size-3 mr-1" /> Errore
+            </Badge>
+            <div className="text-sm font-medium">{res.error.message}</div>
+            {res.error.hint && <div className="text-sm text-amber-400">💡 {res.error.hint}</div>}
+            <div className="text-xs text-muted-foreground">
+              Codice: <code>{res.error.code}</code>
+              {res.error.httpStatus ? ` · HTTP ${res.error.httpStatus}` : ""}
+              {res.error.krakenErrors.length > 0 && (
+                <span> · Kraken: <code>{res.error.krakenErrors.join("; ")}</code></span>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
