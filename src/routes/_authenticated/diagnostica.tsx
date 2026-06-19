@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Sparkles } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Activity, Layers, Compass, Droplets, Sparkles, Plug } from "lucide-react";
 import { getDiagnostics, type CandidateRow, type UniverseRow, type DiagnosticsPayload } from "@/lib/diagnostics.functions";
 import { listFlagChanges } from "@/lib/ai-supervisor.functions";
+import { testKrakenConnection } from "@/lib/portfolio.functions";
 
 export const Route = createFileRoute("/_authenticated/diagnostica")({
   component: DiagnosticaPage,
@@ -33,6 +34,8 @@ function DiagnosticaPage() {
           Aggiorna
         </Button>
       </div>
+
+      <KrakenConnectionCard />
 
       {q.isLoading ? (
         <div className="space-y-4">
