@@ -493,3 +493,51 @@ function Row({ label, value, positive, negative }: { label: string; value: strin
     </div>
   );
 }
+
+// ============================================================================
+// V4: ripartizione tra classi di asset (crypto / stocks / futures / forex)
+// ============================================================================
+function AssetClassPanel({ settings }: { settings: Record<string, unknown> | undefined }) {
+  const split = (settings?.asset_class_split as Record<string, number> | undefined) ?? { crypto: 1, stocks: 0, futures: 0, forex: 0 };
+  const rows = [
+    { key: "crypto", label: "Crypto", color: "var(--color-chart-1)", paperOnly: false },
+    { key: "stocks", label: "Azioni", color: "var(--color-chart-2)", paperOnly: true },
+    { key: "futures", label: "Futures", color: "var(--color-chart-3)", paperOnly: true },
+    { key: "forex", label: "Forex", color: "var(--color-chart-4)", paperOnly: true },
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Coins className="size-5" /> Strategia v4 — Allocazione per classe di asset</CardTitle>
+        <CardDescription>
+          Il preset scelto definisce anche la ripartizione tra Crypto, Azioni, Futures e Forex.
+          Stocks/Futures/Forex sono <strong>solo Paper</strong> finché non integriamo un broker dedicato:
+          il GO LIVE resta crypto-only (Kraken).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {rows.map((r) => {
+          const pct = Math.round((Number(split[r.key] ?? 0)) * 100);
+          return (
+            <div key={r.key} className="space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="size-2.5 rounded-sm" style={{ background: r.color }} />
+                  <span className="font-medium">{r.label}</span>
+                  {r.paperOnly && <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/30">solo PAPER</Badge>}
+                </div>
+                <span className="tabular-nums font-medium">{pct}%</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full transition-all" style={{ width: `${pct}%`, background: r.color }} />
+              </div>
+            </div>
+          );
+        })}
+        <div className="text-xs text-muted-foreground pt-1">
+          Per modificare i valori cambia preset (Conservativo / Bilanciato / Aggressivo) qui sopra.
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
