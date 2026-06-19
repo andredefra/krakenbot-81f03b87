@@ -69,10 +69,11 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
 
     const { data: settings } = await supabase
       .from("settings")
-      .select("mode")
+      .select("mode, paper_seeded_at, paper_seed_total_usd, paper_seed_cash_usd")
       .eq("user_id", userId)
       .maybeSingle();
     const mode = (settings?.mode === "live" ? "live" : "paper") as "live" | "paper";
+
 
     if (mode === "live") {
       const {
