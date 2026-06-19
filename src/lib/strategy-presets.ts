@@ -1,7 +1,8 @@
-// Client-safe strategy presets — v3 Core-Led (vedi STRATEGIA.md v3).
-// v3: 70/30 di default, satellite più severo (max 2 pos, target +5%, ≤6 trade/mese,
-// cooldown 48h), Bear-DCA opzionale, igiene universo, fee reali Kraken usate sia
-// dall'engine che dal backtest.
+// Client-safe strategy presets — v4 multi-asset (crypto core/satellite + stocks
+// via xStocks + forex). Vedi STRATEGIA.md.
+// v4 mantiene il motore v3 Core-Led + Bear-DCA su crypto e aggiunge ripartizione
+// per classe d'asset (asset_class_split) e nuove fonti di sentiment fondamentale
+// (Finnhub news, Alpha Vantage news) per stocks/forex.
 
 export type PresetId = "conservative" | "balanced" | "aggressive" | "custom";
 
@@ -147,7 +148,7 @@ export const PRESETS: StrategyPreset[] = [
   {
     id: "balanced",
     name: "Bilanciato",
-    tagline: "Default v3 — 70% core, 30% satellite severo",
+    tagline: "Default v4 multi-asset — 70% core, 30% satellite severo",
     risk: "Media",
     variance: "Media",
     expected: "Mira a Sharpe più alto del buy & hold con fee reali",
@@ -180,7 +181,7 @@ export const PRESETS: StrategyPreset[] = [
     },
     description: {
       summary:
-        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v3: meno frequenza = meno drag da commissioni reali Kraken.",
+        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v4 multi-asset: meno frequenza = meno drag da commissioni reali Kraken.",
       assets: ["Core: BTC, ETH", "Satellite: universo Kraken filtrato (no fiat/commodity)"],
       entryRules: [
         "Macro: BTC sopra SMA200 (core investito)",
@@ -194,7 +195,7 @@ export const PRESETS: StrategyPreset[] = [
         "Inversione trend (SMA20<50 su 4h) o regime medio risk-off",
         "Cooldown 48h sullo stesso asset",
       ],
-      idealFor: "Equilibrio rischio/rendimento, default raccomandato v3",
+      idealFor: "Equilibrio rischio/rendimento, default raccomandato v4",
       avoidIf: "Vuoi semplicemente comprare e tenere senza filtri",
       expectedDrawdown: "−15% / −22%",
       tradesPerMonth: "≤ 6",
@@ -306,16 +307,18 @@ export function detectPreset(settings: Record<string, unknown> | null | undefine
 // ============================================================================
 // Sentiment weights derivati dal preset attivo + sorgenti abilitate
 // ============================================================================
-// Strategia v3: F&G è "gate" sempre primario e governa anche il trigger di
-// deep-fear del Bear-DCA. LunarCrush e Santiment sono solo conferme sul satellite.
+// Strategia v4: F&G è "gate" sempre primario e governa anche il trigger di
+// deep-fear del Bear-DCA. LunarCrush e Santiment confermano i satellite crypto.
+// Finnhub News e Alpha Vantage News forniscono sentiment fondamentale per
+// stocks (via xStocks su Kraken) e forex.
 
 const SENTIMENT_BASE: Record<Exclude<PresetId, "custom">, Record<string, number>> = {
-  conservative: { fear_greed: 0.7, lunarcrush: 0.2, santiment: 0.1, news: 0.0 },
-  balanced:     { fear_greed: 0.5, lunarcrush: 0.3, santiment: 0.2, news: 0.0 },
-  aggressive:   { fear_greed: 0.3, lunarcrush: 0.4, santiment: 0.3, news: 0.0 },
+  conservative: { fear_greed: 0.55, lunarcrush: 0.15, santiment: 0.10, finnhub_news: 0.10, alpha_vantage_news: 0.10, news: 0.0 },
+  balanced:     { fear_greed: 0.40, lunarcrush: 0.20, santiment: 0.15, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
+  aggressive:   { fear_greed: 0.25, lunarcrush: 0.30, santiment: 0.20, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
 };
 
-const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "news"] as const;
+const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "finnhub_news", "alpha_vantage_news", "news"] as const;
 
 export function deriveSentimentWeights(
   presetId: PresetId,

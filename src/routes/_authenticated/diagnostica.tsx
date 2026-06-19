@@ -26,8 +26,8 @@ function DiagnosticaPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine v3</h1>
-          <p className="text-sm text-muted-foreground">Regimi macro/meso, Core / Satellite / Bear-DCA, universo dinamico, fee Kraken reali</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Diagnostica engine v4</h1>
+          <p className="text-sm text-muted-foreground">Regimi macro/meso, Core / Satellite / Bear-DCA, multi-asset (crypto + stocks xStocks + forex), universo dinamico, fee Kraken reali</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
           <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
@@ -205,7 +205,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
                 <Sparkles className="size-5 text-primary" /> AI Supervisor
               </CardTitle>
               <CardDescription>
-                Decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
+                Strategia v4 multi-asset (crypto + stocks xStocks + forex) — alloca capitale per classe d'asset e decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-1">
