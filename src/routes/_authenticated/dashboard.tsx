@@ -248,6 +248,12 @@ function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <PortfolioPieChart
+        data={portfolioQuery.data}
+        loading={portfolioQuery.isLoading}
+        onRefresh={() => portfolioQuery.refetch()}
+      />
     </div>
   );
 }
