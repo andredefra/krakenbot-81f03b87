@@ -162,6 +162,7 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
                 </div>
               )}
             </div>
+            <AssetDetailTable data={data} onDrill={setDrillClass} />
           </div>
         )}
       </CardContent>
