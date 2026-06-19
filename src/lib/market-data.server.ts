@@ -47,7 +47,7 @@ export function xStockBaseSymbol(symbol: string): string | null {
   const clean = symbol.replace(/[^A-Z0-9]/gi, "").toUpperCase();
   const known = ["AAPL", "AMZN", "COIN", "GOOGL", "META", "MSFT", "MSTR", "NVDA", "SPY", "TSLA"];
   for (const base of known) {
-    if (clean === `${base}X` || clean === `${base}XSTOCK` || clean === `${base}XSTOCKS`) return base;
+    if (clean === base || clean === `${base}X` || clean === `${base}XSTOCK` || clean === `${base}XSTOCKS`) return base;
   }
   return null;
 }
