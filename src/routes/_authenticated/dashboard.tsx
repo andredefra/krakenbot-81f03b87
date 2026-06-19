@@ -386,3 +386,62 @@ function KpiCard(props: {
     </Card>
   );
 }
+
+function PortfolioSourceBanner({ mode, onReseeded }: { mode: "live" | "paper"; onReseeded: () => void }) {
+  const reseed = useServerFn(seedPaperFromKraken);
+  const [busy, setBusy] = useState(false);
+  const [seededAt, setSeededAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    supabase
+      .from("settings")
+      .select("paper_seeded_at")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancel) setSeededAt(((data as { paper_seeded_at?: string | null } | null)?.paper_seeded_at) ?? null);
+      });
+    return () => { cancel = true; };
+  }, []);
+
+  if (mode === "live") {
+    return (
+      <div className="text-xs text-muted-foreground flex items-center gap-2">
+        <span className="inline-block size-1.5 rounded-full bg-green-500" />
+        Sorgente portafoglio: <span className="font-medium text-foreground">Kraken live</span> (saldi e posizioni in tempo reale).
+      </div>
+    );
+  }
+
+  const handle = async () => {
+    setBusy(true);
+    try {
+      const res = await reseed({ data: { force: true } });
+      if (res.ok) {
+        setSeededAt(res.seededAt);
+        toast.success(`PAPER risincronizzato da Kraken: ${res.created} posizioni, $${Math.round(res.totalValueUsd)}.`);
+        onReseeded();
+      } else {
+        toast.error(`Seed fallito: ${res.error.message}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 flex-wrap text-xs bg-muted/30 border border-border rounded-md px-3 py-2">
+      <div className="text-muted-foreground">
+        Sorgente portafoglio: <span className="font-medium text-foreground">PAPER</span>
+        {seededAt
+          ? <> · seed iniziale da Kraken il <span className="font-medium text-foreground">{new Date(seededAt).toLocaleString("it-IT")}</span></>
+          : <> · non ancora inizializzato</>}
+      </div>
+      <Button size="sm" variant="outline" onClick={handle} disabled={busy} className="h-7">
+        <RefreshCw className={`size-3.5 mr-1.5 ${busy ? "animate-spin" : ""}`} />
+        Risincronizza da Kraken
+      </Button>
+    </div>
+  );
+}
+
