@@ -148,6 +148,8 @@ function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; curr
           <Badge variant="outline">Varianza {preset.variance}</Badge>
           <Badge variant="outline">F&amp;G ≤ {v.fg_greed_cap}</Badge>
         </div>
+        <SentimentMix presetId={preset.id} />
+
         <Button onClick={onApply} disabled={current} className="w-full" variant={current ? "outline" : "default"}>
           {current ? "Già attivo" : "Applica preset"}
         </Button>
