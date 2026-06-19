@@ -195,7 +195,7 @@ export const PRESETS: StrategyPreset[] = [
         "Inversione trend (SMA20<50 su 4h) o regime medio risk-off",
         "Cooldown 48h sullo stesso asset",
       ],
-      idealFor: "Equilibrio rischio/rendimento, default raccomandato v3",
+      idealFor: "Equilibrio rischio/rendimento, default raccomandato v4",
       avoidIf: "Vuoi semplicemente comprare e tenere senza filtri",
       expectedDrawdown: "−15% / −22%",
       tradesPerMonth: "≤ 6",
