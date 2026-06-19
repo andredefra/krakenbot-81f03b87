@@ -61,7 +61,7 @@ function StrategiaPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Strategia</h1>
         <p className="text-sm text-muted-foreground">
-          Strategia v3 <strong>Core-Led</strong> con Bear-DCA su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
+          Strategia v4 <strong>Core-Led</strong> con Bear-DCA su universo Kraken dinamico. Cambia preset e i parametri della pagina Rischio (più i pesi sentiment) si riallineano.
           <span className="block mt-1 text-xs">⚠️ I trade già aperti mantengono i loro stop. Solo i nuovi useranno il preset.</span>
         </p>
       </div>
@@ -285,7 +285,7 @@ function BacktestSection() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="size-5" /> Backtest storico</CardTitle>
-            <CardDescription>Strategia v3 vs BTC Buy &amp; Hold e S&amp;P 500. L'universo asset è gestito automaticamente dall'AI Supervisor.</CardDescription>
+            <CardDescription>Strategia v4 vs BTC Buy &amp; Hold e S&amp;P 500. L'universo asset è gestito automaticamente dall'AI Supervisor.</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -361,7 +361,7 @@ function BacktestSection() {
                     formatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v3" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="strategy" stroke="#60a5fa" dot={false} strokeWidth={2.5} name="Strategia v4" isAnimationActive={false} />
                   <Line type="monotone" dataKey="btc" stroke="#f7931a" dot={false} strokeWidth={1.5} name="BTC Buy & Hold" isAnimationActive={false} />
                   <Line type="monotone" dataKey="spx" stroke="#22c55e" dot={false} strokeWidth={1.5} name="S&P 500" isAnimationActive={false} />
                 </LineChart>
@@ -413,7 +413,7 @@ function BacktestSection() {
             })()}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <KpiCard title="Strategia v3" kpis={runMut.data.strategyKpis} highlight />
+              <KpiCard title="Strategia v4" kpis={runMut.data.strategyKpis} highlight />
               <KpiCard title="BTC Buy & Hold" kpis={runMut.data.btcKpis} />
               <KpiCard title="S&P 500" kpis={runMut.data.spxKpis} />
             </div>
@@ -437,8 +437,8 @@ function BacktestSection() {
             })()}
 
             <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1 bg-muted/20">
-              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v3)</div>
-              <div>• <strong>Strategia v3 Core-Led</strong>: core (BTC/ETH) protetto da filtro macro SMA200 BTC; satellite con regole strette.</div>
+              <div className="font-medium text-foreground">Cosa è incluso nel calcolo (v4)</div>
+              <div>• <strong>Strategia v4 Core-Led</strong>: core (BTC/ETH) protetto da filtro macro SMA200 BTC; satellite con regole strette.</div>
               <div>• <strong>Universo</strong>: l'AI Supervisor decide a runtime quali asset attivare. Il backtest simula l'universo Kraken completo come riferimento storico.</div>
               <div>• <strong>Benchmark</strong>: BTC Buy &amp; Hold (rendimento passivo crypto) e S&amp;P 500 (rendimento passivo equity USA).</div>
               <div>• <strong>Commissioni reali Kraken</strong>: taker e slippage letti dai tuoi settings (default taker 0.40% + slip 0.05%).</div>
