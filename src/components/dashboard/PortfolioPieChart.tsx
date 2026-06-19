@@ -172,6 +172,49 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
   );
 }
 
+function AssetDetailTable({ data, onDrill }: { data: Extract<PortfolioResult, { ok: true }>; onDrill: (c: AssetClass) => void }) {
+  const rows = useMemo(() => {
+    const all = data.classes.flatMap((c) => c.items.map((i) => ({ ...i, classKey: c.assetClass })));
+    return all.filter((r) => r.valueUsd > 0).sort((a, b) => b.valueUsd - a.valueUsd);
+  }, [data]);
+  if (rows.length === 0) return null;
+  return (
+    <div className="border-t border-border pt-3">
+      <div className="text-sm font-medium mb-2">Dettaglio asset</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b border-border">
+              <th className="text-left font-normal py-1.5 pr-3">Asset</th>
+              <th className="text-left font-normal py-1.5 pr-3">Classe</th>
+              <th className="text-right font-normal py-1.5 pr-3">Quantità</th>
+              <th className="text-right font-normal py-1.5 pr-3">Prezzo</th>
+              <th className="text-right font-normal py-1.5 pr-3">Valore</th>
+              <th className="text-right font-normal py-1.5">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={i}
+                className="border-b border-border/40 hover:bg-muted/40 cursor-pointer"
+                onClick={() => onDrill(r.classKey)}
+              >
+                <td className="py-1.5 pr-3 font-medium">{r.symbol}</td>
+                <td className="py-1.5 pr-3 text-muted-foreground">{CLASS_LABELS[r.classKey]}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums">{r.qty.toLocaleString("it-IT", { maximumFractionDigits: 8 })}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums">{r.priceUsd != null ? formatUsd(r.priceUsd) : "—"}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums">{formatUsd(r.valueUsd)}</td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{((r.valueUsd / data.totalValueUsd) * 100).toFixed(1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="h-72 grid place-items-center text-sm text-muted-foreground text-center px-4">
