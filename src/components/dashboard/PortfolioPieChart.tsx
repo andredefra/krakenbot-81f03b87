@@ -98,69 +98,71 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
         ) : pieData.length === 0 ? (
           <EmptyState message={data.source === "paper" ? "Portfolio paper vuoto. L'engine non ha ancora aperto posizioni." : "Nessun saldo trovato sul conto Kraken."} />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={95}
-                    paddingAngle={2}
-                    onClick={(d: unknown) => {
-                      const ck = (d as { classKey?: AssetClass }).classKey;
-                      if (!drillClass && ck) setDrillClass(ck);
-                    }}
-                    style={{ cursor: drillClass ? "default" : "pointer" }}
-                  >
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} stroke="var(--color-background)" strokeWidth={2} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--color-popover)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 8, fontSize: 12,
-                    }}
-                    formatter={(v: number, _n, ctx) => [`${formatUsd(v)} (${((v / data.totalValueUsd) * 100).toFixed(1)}%)`, ctx.payload.name]}
-                  />
-                  <Legend verticalAlign="bottom" height={28} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">Totale</div>
-              <div className="text-3xl font-semibold tabular-nums">{formatUsd(data.totalValueUsd)}</div>
-              <div className="text-xs text-muted-foreground">
-                aggiornato {new Date(data.fetchedAt).toLocaleString("it-IT")}
-              </div>
-              <div className="space-y-1 mt-3">
-                {pieData.map((p, i) => {
-                  const ck = (p as unknown as { classKey?: AssetClass }).classKey;
-                  return (
-                    <div
-                      key={i}
-                      className={`flex items-center justify-between text-sm rounded-md px-2 py-1.5 ${!drillClass && ck ? "cursor-pointer hover:bg-muted/50" : ""}`}
-                      onClick={() => { if (!drillClass && ck) setDrillClass(ck); }}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%" cy="50%"
+                      innerRadius={50} outerRadius={95}
+                      paddingAngle={2}
+                      onClick={(d: unknown) => {
+                        const ck = (d as { classKey?: AssetClass }).classKey;
+                        if (!drillClass && ck) setDrillClass(ck);
+                      }}
+                      style={{ cursor: drillClass ? "default" : "pointer" }}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="size-2.5 rounded-sm" style={{ background: p.color }} />
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground">{p.sub}</span>
-                      </div>
-                      <div className="tabular-nums">{formatUsd(p.value)} <span className="text-xs text-muted-foreground">({((p.value / data.totalValueUsd) * 100).toFixed(1)}%)</span></div>
-                    </div>
-                  );
-                })}
+                      {pieData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} stroke="var(--color-background)" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--color-popover)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: 8, fontSize: 12,
+                      }}
+                      formatter={(v: number, _n, ctx) => [`${formatUsd(v)} (${((v / data.totalValueUsd) * 100).toFixed(1)}%)`, ctx.payload.name]}
+                    />
+                    <Legend verticalAlign="bottom" height={28} wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-              {data.warnings.length > 0 && (
-                <div className="text-xs text-amber-500 mt-2">
-                  {data.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Totale</div>
+                <div className="text-3xl font-semibold tabular-nums">{formatUsd(data.totalValueUsd)}</div>
+                <div className="text-xs text-muted-foreground">
+                  aggiornato {new Date(data.fetchedAt).toLocaleString("it-IT")}
                 </div>
-              )}
+                <div className="space-y-1 mt-3">
+                  {pieData.map((p, i) => {
+                    const ck = (p as unknown as { classKey?: AssetClass }).classKey;
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center justify-between text-sm rounded-md px-2 py-1.5 ${!drillClass && ck ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                        onClick={() => { if (!drillClass && ck) setDrillClass(ck); }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="size-2.5 rounded-sm" style={{ background: p.color }} />
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground">{p.sub}</span>
+                        </div>
+                        <div className="tabular-nums">{formatUsd(p.value)} <span className="text-xs text-muted-foreground">({((p.value / data.totalValueUsd) * 100).toFixed(1)}%)</span></div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {data.warnings.length > 0 && (
+                  <div className="text-xs text-amber-500 mt-2">
+                    {data.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                  </div>
+                )}
+              </div>
             </div>
             <AssetDetailTable data={data} onDrill={setDrillClass} />
           </div>
