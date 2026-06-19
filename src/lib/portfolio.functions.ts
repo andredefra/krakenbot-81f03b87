@@ -1,21 +1,8 @@
 // Server functions per portfolio LIVE/PAPER.
-// - getLivePortfolio: composizione + equity. In live va su Kraken Balance + Ticker.
-//   In paper usa positions aperte + cash dell'ultimo snapshot. NIENTE dati finti.
-// - testKrakenConnection: chiamata leggera autenticata a /0/private/BalanceEx per
-//   verificare key/secret/permessi nella pagina Diagnostica.
+// Heavy logic (Kraken/market-data) is in portfolio.server.ts and dynamically
+// imported inside handler bodies so it never lands in client bundles.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import {
-  KrakenApiError,
-  fetchKrakenBalanceEx,
-  fetchKrakenOpenOrders,
-  fetchKrakenOpenPositions,
-  fetchKrakenPublicTicker,
-  fetchKrakenTradeBalance,
-  isFiat,
-  normalizeKrakenAsset,
-} from "@/lib/kraken.server";
-import { fetchStockQuote, xStockBaseSymbol } from "@/lib/market-data.server";
 
 export type AssetClass = "crypto" | "stocks" | "futures" | "forex" | "cash";
 
@@ -71,135 +58,6 @@ export type LivePositionItem = {
   rawId?: string;
 };
 
-function krakenErrorDto(e: unknown) {
-  if (e instanceof KrakenApiError) {
-    return { code: e.code, message: e.message, httpStatus: e.httpStatus, krakenErrors: e.krakenErrors, hint: e.hint };
-  }
-  const msg = e instanceof Error ? e.message : String(e);
-  return { code: "UNKNOWN", message: msg, httpStatus: 0, krakenErrors: [] as string[], hint: null as string | null };
-}
-
-function classifyAsset(symbol: string): AssetClass {
-  if (isFiat(symbol)) return "cash";
-  if (xStockBaseSymbol(symbol)) return "stocks";
-  if (/^[A-Z]{3}[A-Z]{3}$/.test(symbol) && /USD|EUR|GBP|JPY|CHF|CAD|AUD/.test(symbol)) return "forex";
-  return "crypto";
-}
-
-// ----------------------------------------------------------------------------
-// Helper: prova a recuperare prezzi USD per una lista di asset Kraken normali
-// (es. BTC, ETH, SOL). Restituisce mappa { BTC: 65000, ETH: 3200, ... }.
-// ----------------------------------------------------------------------------
-async function priceMapForCrypto(symbols: string[]): Promise<Record<string, number>> {
-  const wanted = symbols.filter((s) => !isFiat(s));
-  if (wanted.length === 0) return {};
-  // Kraken accetta varie coppie: BTCUSD, XBTUSD, ETHUSD, ecc. Proviamo formato comune.
-  const pairs = wanted.map((s) => `${s === "BTC" ? "XBT" : s}USD`);
-  try {
-    const ticker = await fetchKrakenPublicTicker(pairs);
-    const out: Record<string, number> = {};
-    for (const sym of wanted) {
-      const candidates = [
-        `X${sym === "BTC" ? "XBT" : sym}ZUSD`,
-        `${sym === "BTC" ? "XBT" : sym}USD`,
-        `${sym}USD`,
-      ];
-      for (const k of Object.keys(ticker)) {
-        if (candidates.some((c) => k === c || k.endsWith(c.replace("USD", "ZUSD")))) {
-          out[sym] = ticker[k];
-          break;
-        }
-      }
-      if (!out[sym]) {
-        // fallback: trova qualsiasi key che contenga il symbol
-        const k = Object.keys(ticker).find((x) => x.includes(sym === "BTC" ? "XBT" : sym));
-        if (k) out[sym] = ticker[k];
-      }
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: string) {
-  const balanceEx = await fetchKrakenBalanceEx(apiKey, apiSecret);
-  const warnings: string[] = [];
-  let openOrders: Awaited<ReturnType<typeof fetchKrakenOpenOrders>> = { open: {} };
-  let openPositions: Awaited<ReturnType<typeof fetchKrakenOpenPositions>> = {};
-  try {
-    openOrders = await fetchKrakenOpenOrders(apiKey, apiSecret);
-  } catch (e) {
-    warnings.push(`OpenOrders non disponibile: ${krakenErrorDto(e).message}`);
-  }
-  try {
-    openPositions = await fetchKrakenOpenPositions(apiKey, apiSecret);
-  } catch (e) {
-    warnings.push(`OpenPositions non disponibile: ${krakenErrorDto(e).message}`);
-  }
-
-  const aggregated: Record<string, number> = {};
-  for (const [rawAsset, entry] of Object.entries(balanceEx)) {
-    const qty = Number(entry.balance ?? 0);
-    if (!Number.isFinite(qty) || qty === 0) continue;
-    const sym = normalizeKrakenAsset(rawAsset);
-    aggregated[sym] = (aggregated[sym] ?? 0) + qty;
-  }
-
-  const symbols = Object.keys(aggregated);
-  const cryptoSymbols = symbols.filter((s) => classifyAsset(s) === "crypto");
-  const prices = await priceMapForCrypto(cryptoSymbols);
-  for (const sym of symbols.filter((s) => classifyAsset(s) === "stocks")) {
-    const base = xStockBaseSymbol(sym);
-    if (!base) continue;
-    const quote = await fetchStockQuote(base);
-    if (quote.priceUsd != null) prices[sym] = quote.priceUsd;
-    else warnings.push(`Prezzo Finnhub non trovato per xStock ${sym}.`);
-  }
-
-  return {
-    balances: aggregated,
-    openOrders: openOrders.open ?? {},
-    openPositions,
-    prices,
-    warnings,
-  };
-}
-
-export function livePositionsFromSnapshot(snapshot: Awaited<ReturnType<typeof loadLivePortfolioSnapshot>>): LivePositionItem[] {
-  const items: LivePositionItem[] = [];
-  for (const [asset, qty] of Object.entries(snapshot.balances)) {
-    if (isFiat(asset) || qty <= 0) continue;
-    const current = snapshot.prices[asset] ?? null;
-    items.push({
-      source: "kraken-live", kind: "spot", asset, side: "long", qty,
-      entry_price: null, current_price: current, entry_value: current == null ? null : qty * current,
-      opened_at: null, status: "open",
-    });
-  }
-  for (const [id, p] of Object.entries(snapshot.openPositions)) {
-    const asset = normalizeKrakenAsset(p.pair ?? id);
-    const qty = Number(p.vol ?? 0) - Number(p.vol_closed ?? 0);
-    const cost = Number(p.cost ?? 0);
-    items.push({
-      source: "kraken-live", kind: "margin", asset, side: p.type === "sell" ? "short" : "long", qty,
-      entry_price: qty ? cost / qty : null, current_price: null, entry_value: cost || null,
-      opened_at: p.time ? new Date(p.time * 1000).toISOString() : null, status: "open", rawId: id,
-    });
-  }
-  for (const [id, o] of Object.entries(snapshot.openOrders)) {
-    const asset = normalizeKrakenAsset(o.descr?.pair ?? id);
-    const qty = Math.max(0, Number(o.vol ?? 0) - Number(o.vol_exec ?? 0));
-    const price = Number(o.descr?.price ?? o.price ?? 0) || null;
-    items.push({
-      source: "kraken-live", kind: "order", asset, side: o.descr?.type === "sell" ? "sell" : "buy", qty,
-      entry_price: price, current_price: null, entry_value: price == null ? null : qty * price,
-      opened_at: o.opentm ? new Date(o.opentm * 1000).toISOString() : null, status: "open", rawId: id,
-    });
-  }
-  return items.sort((a, b) => (b.entry_value ?? 0) - (a.entry_value ?? 0));
-}
-
 // ============================================================================
 // getLivePortfolio
 // ============================================================================
@@ -216,8 +74,11 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
       .maybeSingle();
     const mode = (settings?.mode === "live" ? "live" : "paper") as "live" | "paper";
 
-    // ----------- LIVE -----------
     if (mode === "live") {
+      const {
+        loadLivePortfolioSnapshot, classifyAsset, krakenErrorDto, KrakenApiError,
+        isFiat, fetchKrakenTradeBalance,
+      } = await import("@/lib/portfolio.server");
       const apiKey = process.env.KRAKEN_API_KEY;
       const apiSecret = process.env.KRAKEN_API_SECRET;
       try {
@@ -227,7 +88,6 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
         const warnings = [...snapshot.warnings];
         for (const [sym, qty] of Object.entries(snapshot.balances)) {
           if (isFiat(sym)) {
-            // converto qualsiasi fiat in USD: USD 1:1, altri fiat → skip (warning)
             if (sym === "USD") cashUsd += qty;
             else warnings.push(`Saldo in ${sym} (${qty}) non convertito in USD — aggiungi conversione manuale.`);
             continue;
@@ -336,6 +196,7 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
 export const testKrakenConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
+    const { fetchKrakenBalanceEx, normalizeKrakenAsset, KrakenApiError } = await import("@/lib/portfolio.server");
     const apiKey = process.env.KRAKEN_API_KEY;
     const apiSecret = process.env.KRAKEN_API_SECRET;
     const startedAt = new Date().toISOString();
