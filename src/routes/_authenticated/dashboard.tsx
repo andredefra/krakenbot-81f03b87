@@ -117,10 +117,24 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <KpiCard
-          title="Valore portafoglio"
+          title={`Valore portafoglio (${portfolioQuery.data?.source === "kraken-live" ? "LIVE" : "PAPER"})`}
           icon={<Gauge className="size-4" />}
-          value={formatUsd(latest?.total_value ?? null)}
-          loading={snapshotsQuery.isLoading}
+          value={
+            portfolioQuery.data?.ok
+              ? formatUsd(portfolioQuery.data.totalValueUsd)
+              : portfolioQuery.data?.ok === false
+                ? "Errore"
+                : "—"
+          }
+          sub={
+            portfolioQuery.data?.ok === false
+              ? portfolioQuery.data.error.message.slice(0, 80)
+              : portfolioQuery.data?.ok
+                ? `agg. ${new Date(portfolioQuery.data.fetchedAt).toLocaleTimeString("it-IT")}`
+                : undefined
+          }
+          valueClass={portfolioQuery.data?.ok === false ? "text-red-500" : undefined}
+          loading={portfolioQuery.isLoading}
         />
         <KpiCard
           title="Variazione 24h"
