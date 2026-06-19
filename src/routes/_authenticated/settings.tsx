@@ -283,7 +283,7 @@ function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Timeframe</CardTitle>
-              <CardDescription>v3 raccomandato: 4h o daily (meno rumore, meno fee).</CardDescription>
+              <CardDescription>v4 raccomandato: 4h o daily (meno rumore, meno fee).</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-w-xs space-y-1.5">
