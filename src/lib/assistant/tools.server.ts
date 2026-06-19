@@ -46,7 +46,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         const mode = settings?.mode === "live" ? "live" : "paper";
         if (mode === "live") {
           try {
-            const { loadLivePortfolioSnapshot, livePositionsFromSnapshot } = await import("@/lib/portfolio.functions");
+            const { loadLivePortfolioSnapshot, livePositionsFromSnapshot } = await import("@/lib/portfolio.server");
             const snapshot = await loadLivePortfolioSnapshot(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
             return { ok: true, source: "kraken-live", mode, positions: livePositionsFromSnapshot(snapshot), warnings: snapshot.warnings };
           } catch (e) {
@@ -130,7 +130,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         const mode = (settings?.mode === "live" ? "live" : "paper") as "live" | "paper";
         if (mode === "live") {
           try {
-            const { loadLivePortfolioSnapshot } = await import("@/lib/portfolio.functions");
+            const { loadLivePortfolioSnapshot } = await import("@/lib/portfolio.server");
             const { isFiat } = await import("@/lib/kraken.server");
             const snapshot = await loadLivePortfolioSnapshot(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
             const holdings = Object.entries(snapshot.balances).map(([symbol, qty]) => {
