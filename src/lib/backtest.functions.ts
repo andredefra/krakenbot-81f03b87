@@ -28,10 +28,10 @@ export type BacktestPayload = {
   years: number;
 };
 
-// Universo completo Kraken: l'AI Supervisor decide a runtime quali asset
-// usare (core_only_mode / exclude_fiat_commodity). Il backtest simula lo
-// scenario "AI lascia accesso libero" come riferimento storico.
-const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+// Universo v4: crypto + proxy azionario SPX. Il runtime valuta i token azionari
+// e xStocks reali disponibili su Kraken; il backtest usa SPX come proxy storico
+// quando non esiste uno storico lungo per ogni stock-token Kraken.
+const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC", "SPX"];
 const CORE_ASSETS = ["BTC", "ETH"]; // sleeve core buy & hold equipesato
 
 function hashInput(input: { preset: string; years: number; startCapital: number }): string {
@@ -135,7 +135,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     since.setFullYear(since.getFullYear() - data.years);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    const allSyms = ["BTC", "SPX", ...FULL_UNIVERSE];
+    const allSyms = [...new Set(["BTC", "SPX", ...FULL_UNIVERSE])];
 
     const bySym: Record<string, Array<{ date: string; close: number }>> = {};
     const ohlcResults = await Promise.all(

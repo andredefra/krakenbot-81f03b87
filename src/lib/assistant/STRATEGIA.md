@@ -1,6 +1,6 @@
-# Strategia di Trading v3 — Bot Crypto su Kraken
+# Strategia di Trading v4 — Bot Kraken multi-asset
 
-> Evoluzione della v2, guidata dalla **lente del backtesting** e dalla ricerca di mercato. Sostituisce `STRATEGIA_v2.md` + `REVISIONE_v2_ricerca.md`. Notifiche, paper→live e sicurezza restano come prima.
+> Evoluzione della v3: mantiene Core-Led + Bear-DCA su BTC/ETH, ma il satellite valuta tutto l'universo Kraken liquido, incluse azioni tokenizzate/xStocks, forex e commodity se presenti e negoziabili.
 >
 > **Premessa onesta**: i "miglioramenti" della v3 sono soprattutto **disciplina di validazione e onestà sulle commissioni** — non una strategia più "furba". Spesso la versione vincente è la più semplice. Nulla va in live finché un backtest serio non supera il cancello della §5.
 
@@ -15,7 +15,7 @@
 | Bear-DCA | proposta | **opzionale, da validare** | utile solo se batte il trend puro nel backtest |
 | Target minimo satellite | +4% | **+5%** | per superare le fee reali con margine |
 | Tetto trade satellite/mese | ≤8 | **≤6** | meno frequenza = meno drag |
-| Universo | tutto Kraken (vol/spread/età) | **+ igiene**: escludi token fiat/commodity | momentum su euro/oro è fuori mandato |
+| Universo | crypto Kraken | **Kraken multi-asset**: crypto + token azionari/xStocks + forex + commodity | cercare momentum dove c'è liquidità, senza escludere asset Kraken validi |
 | Validazione | accennata | **walk-forward + robustezza + vs DCA** formalizzati | è qui il vero salto di qualità |
 
 ---
@@ -43,7 +43,7 @@ Più peso alla parte robusta (il core trend-following, che ha schivato il bear d
 ### 3.2 SATELLITE (~30%)
 - **Max 2** posizioni, **rischio 3%** per trade (size da volatilità), stop `max(12%, 2×ATR)`, trailing +12% / −8%, take-profit parziale +25%.
 - **Target minimo per aprire: +5%** (alzato per le fee reali). **Tetto ≤6 trade/mese**. **Cooldown 48h**.
-- Universo dinamico (vol > 5M, spread < 0,3%, età ≥ 60g) **+ igiene**: escludi token **fiat/stablecoin** (es. ZEUR) e **commodity-pegged** (es. PAXG) — non sono asset da momentum di crescita.
+- Universo dinamico (vol > 5M, spread < 0,3%, età ≥ 60g) su Kraken multi-asset. **Non escludere** token azionari/xStocks, forex o commodity-pegged (es. PAXG): entrano nel satellite se passano liquidità, spread, età e trend. Le stablecoin restano escluse.
 - **Gate satellite su BTC SMA50: confermato** (le alt crollano più di BTC nel risk-off → tenerlo).
 - **Modalità *core-only***: interruttore per spegnere del tutto il satellite e tenere solo il core. Da considerare se il satellite non supera la validazione.
 
@@ -97,7 +97,7 @@ Se non passa → resta in paper, oppure ripiega su **core-only** o su **solo DCA
 | Target minimo per aprire | **+5%** |
 | Tetto trade satellite/mese | **≤6** |
 | Cooldown stesso asset | 48h |
-| Filtri universo | vol > 5M, spread < 0,3%, età ≥ 60g, **no fiat/commodity** |
+| Filtri universo | vol > 5M, spread < 0,3%, età ≥ 60g; stablecoin escluse; token azionari/xStocks, forex e commodity inclusi se quotati su Kraken |
 | Filtro medio (satellite) | BTC vs SMA50 + Fear & Greed |
 | Commissioni (live + backtest) | maker 0,25% / taker 0,40% |
 | Timeframe segnali | 4h |

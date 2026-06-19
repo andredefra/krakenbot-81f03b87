@@ -274,7 +274,7 @@ function SettingsPage() {
                 <Sparkles className="size-4 text-primary" /> Interruttori strategici — gestiti dall'AI
               </CardTitle>
               <CardDescription>
-                <strong>core_only_mode</strong>, <strong>bear_dca_enabled</strong> e <strong>exclude_fiat_commodity</strong> sono decisi automaticamente ogni ora dall'<em>AI Supervisor</em> in base al preset attivo (Conservative/Balanced/Aggressive) e alle condizioni di mercato live (regime macro, F&G, drawdown).
+                <strong>core_only_mode</strong> e <strong>bear_dca_enabled</strong> sono decisi automaticamente ogni ora dall'<em>AI Supervisor</em> in base al preset attivo (Conservative/Balanced/Aggressive) e alle condizioni di mercato live. <strong>exclude_fiat_commodity</strong> resta OFF: il satellite valuta anche token azionari/xStocks, forex e commodity quotati su Kraken.
                 Stato corrente e motivazione visibili in <Link to="/diagnostica" className="text-primary underline">Diagnostica</Link>.
               </CardDescription>
             </CardHeader>

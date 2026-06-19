@@ -86,7 +86,7 @@ type Settings = {
   macro_ma_period?: number;
   mid_ma_period?: number;
   monthly_trade_cap?: number;
-  // v3
+  // v4
   taker_fee_pct?: number;
   maker_fee_pct?: number;
   slippage_pct?: number;
@@ -97,7 +97,24 @@ type Settings = {
   bear_dca_tranche_pct?: number;
   bear_dca_interval_days?: number;
   exclude_fiat_commodity?: boolean;
+  asset_class_split?: { crypto?: number; stocks?: number; futures?: number; forex?: number };
 };
+
+type AssetClass = "crypto" | "stocks" | "futures" | "forex";
+
+const FIAT_FOREX = new Set(["EUR", "GBP", "JPY", "CAD", "AUD", "CHF"]);
+const COMMODITY = new Set(["PAXG", "XAUT", "XAGT"]);
+const FUTURES_TOKENS = new Set(["ES", "ESX", "NQ", "RTY", "CL"]);
+const XSTOCK_BASES = ["AAPL", "AMZN", "COIN", "GOOGL", "META", "MSFT", "MSTR", "NVDA", "SPY", "TSLA", "QQQ", "IWM", "EFA", "EEM", "ARKK"];
+
+function classifyAsset(asset: string): AssetClass {
+  const clean = asset.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  if (FIAT_FOREX.has(clean) || /^[A-Z]{6}$/.test(clean) && /USD|EUR|GBP|JPY|CHF|CAD|AUD/.test(clean)) return "forex";
+  if (COMMODITY.has(clean)) return "forex";
+  if (FUTURES_TOKENS.has(clean)) return "futures";
+  if (XSTOCK_BASES.some((base) => clean === base || clean === `${base}X` || clean === `${base}XSTOCK` || clean === `${base}XSTOCKS`)) return "stocks";
+  return "crypto";
+}
 
 type Position = {
   id: string;
@@ -120,7 +137,7 @@ type Position = {
 // Core loop ------------------------------------------------------------------
 async function runCycle(supa: ReturnType<typeof createClient>, settings: Settings) {
   const userId = settings.user_id;
-  await log(supa, userId, "info", "trading-engine", `Ciclo v3 avviato (${settings.mode})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v4 avviato (${settings.mode})`);
 
   const macroPeriod = settings.macro_ma_period ?? 200;
   const midPeriod = settings.mid_ma_period ?? 50;
@@ -128,7 +145,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const coreWeights = settings.core_weights ?? { BTC: 0.6, ETH: 0.4 };
   const split = settings.core_satellite_split ?? { core: 0.6, satellite: 0.4 };
   const maxSatPos = settings.max_satellite_positions ?? 2;
-  // v3
+  // v4
   const takerFeePct = Number(settings.taker_fee_pct ?? 0.4);
   const coreOnly = Boolean(settings.core_only_mode ?? false);
   const bdEnabled = Boolean(settings.bear_dca_enabled ?? true);
@@ -304,7 +321,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
 
   }
 
-  // 10b. BEAR-DCA ACCUMULATOR (v3)
+  // 10b. BEAR-DCA ACCUMULATOR (v4)
   // Apre tranche su BTC quando macro=risk-off E F&G < soglia (paura estrema).
   // Resta aperto in downtrend; si chiude quando macro torna risk-on (release).
   const bdState: Record<string, unknown> = {
@@ -394,11 +411,19 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     "";
 
   if (!satBlockReason) {
+    const satCapital = split.satellite * settings.capital_reference;
+    const classSplit = settings.asset_class_split ?? { crypto: 1, stocks: 0, futures: 0, forex: 0 };
     for (const asset of satelliteUniverse) {
+      const assetClass = classifyAsset(asset);
+      const classWeight = Number(classSplit[assetClass] ?? (assetClass === "crypto" ? 1 : 0));
       const baseRow: Record<string, unknown> = {
-        asset, price: prices[asset] ?? null, sma20: null, sma50: null,
+        asset, assetClass, price: prices[asset] ?? null, sma20: null, sma50: null,
         trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false,
       };
+      if (classWeight <= 0) {
+        baseRow.reasonSkipped = `Classe ${assetClass} non allocata dal preset`;
+        candidates.push(baseRow); continue;
+      }
       if (stillOpenSat + 1 > maxSatPos) {
         baseRow.reasonSkipped = `Max posizioni satellite raggiunto (${stillOpenSat}/${maxSatPos})`;
         candidates.push(baseRow); continue;
@@ -416,9 +441,13 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
         baseRow.reasonSkipped = `Trend SMA20 ≤ SMA50 (${s20?.toFixed(2) ?? "?"} vs ${s50?.toFixed(2) ?? "?"})`;
         candidates.push(baseRow); continue;
       }
-      // Sizing: usa quota satellite del capitale
-      const satCapital = split.satellite * settings.capital_reference;
-      const sizeUsd = (settings.max_position_pct / 100) * satCapital;
+      // Sizing: usa la quota satellite della classe asset decisa dal preset v4.
+      const classTargetUsd = satCapital * classWeight;
+      const classCurrentUsd = updated
+        .filter((p) => (p.sleeve ?? "satellite") === "satellite" && classifyAsset(p.asset) === assetClass)
+        .reduce((s, p) => s + Number(p.current_price ?? p.entry_price ?? 0) * Number(p.qty ?? 0), 0);
+      const classBudgetLeft = Math.max(0, classTargetUsd - classCurrentUsd);
+      const sizeUsd = Math.min((settings.max_position_pct / 100) * classTargetUsd, classBudgetLeft);
       const MIN_ORDER_USD = 5;
       if (sizeUsd < MIN_ORDER_USD) { baseRow.reasonSkipped = `Size ${sizeUsd.toFixed(2)} USD sotto minimo`; candidates.push(baseRow); continue; }
       if (sizeUsd > cash * 0.99) { baseRow.reasonSkipped = `Cash insufficiente (size ${sizeUsd.toFixed(2)} > cash ${cash.toFixed(2)})`; candidates.push(baseRow); continue; }
@@ -443,7 +472,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     }
   } else {
     for (const asset of satelliteUniverse) {
-      candidates.push({ asset, price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: satBlockReason });
+      candidates.push({ asset, assetClass: classifyAsset(asset), price: prices[asset] ?? null, sma20: null, sma50: null, trendOk: false, priceOk: !!prices[asset], alreadyOpen: false, opened: false, reasonSkipped: satBlockReason });
     }
   }
 
@@ -506,7 +535,7 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
     core_value: finalCore, satellite_value: finalSat,
   });
 
-  await log(supa, userId, "info", "trading-engine", `Ciclo v3 completato totale ${finalTotal.toFixed(2)} (core+dca ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
+  await log(supa, userId, "info", "trading-engine", `Ciclo v4 completato totale ${finalTotal.toFixed(2)} (core+dca ${finalCore.toFixed(2)} / sat ${finalSat.toFixed(2)})`);
 }
 
 // Helpers --------------------------------------------------------------------

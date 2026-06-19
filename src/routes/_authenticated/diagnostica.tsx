@@ -205,7 +205,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
                 <Sparkles className="size-5 text-primary" /> AI Supervisor
               </CardTitle>
               <CardDescription>
-                Strategia v4 multi-asset (crypto + stocks xStocks + forex) — alloca capitale per classe d'asset e decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
+                Strategia v4 multi-asset (crypto + token azionari/xStocks + forex + commodity Kraken) — alloca capitale per classe d'asset e decide ogni ora i flag core/Bear-DCA. Il filtro fiat/commodity resta OFF.
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-1">
@@ -232,7 +232,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <FlagRow label="Core-only" on={data.aiSupervisor.decision?.core_only_mode ?? !!data.settings?.core_only_mode} changed={data.aiSupervisor.changedFlags.includes("core_only_mode")} />
             <FlagRow label="Bear-DCA" on={data.aiSupervisor.decision?.bear_dca_enabled ?? !!data.settings?.bear_dca_enabled} changed={data.aiSupervisor.changedFlags.includes("bear_dca_enabled")} />
-            <FlagRow label="Escludi fiat/oro" on={data.aiSupervisor.decision?.exclude_fiat_commodity ?? !!data.settings?.exclude_fiat_commodity} changed={data.aiSupervisor.changedFlags.includes("exclude_fiat_commodity")} />
+            <FlagRow label="Multi-asset Kraken incluso" on={!(data.aiSupervisor.decision?.exclude_fiat_commodity ?? !!data.settings?.exclude_fiat_commodity)} changed={data.aiSupervisor.changedFlags.includes("exclude_fiat_commodity")} />
 
           </div>
           {data.aiSupervisor.reasoning && (
@@ -283,7 +283,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
           <Kpi label="Pos. aperte" value={`${data.openPositions}`} />
           <Kpi label="Fee totali pagate" value={`$${data.totalFeesUsd.toLocaleString("it-IT", { maximumFractionDigits: 2 })}`} />
           <Kpi label="Preset" value={data.settings?.strategy_preset ?? "—"} />
-          <Kpi label="Filtro fiat/oro" value={data.settings?.exclude_fiat_commodity ? "Attivo" : "Off"} />
+          <Kpi label="Multi-asset Kraken" value={data.settings?.exclude_fiat_commodity ? "Bloccato" : "Incluso"} />
           <Kpi label="Bear-DCA" value={data.settings?.bear_dca_enabled ? "On" : "Off"} />
         </CardContent>
       </Card>

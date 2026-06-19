@@ -1,8 +1,9 @@
-// AI Supervisor v2: per ogni utente running, ogni ora
+// AI Supervisor v4: per ogni utente running, ogni ora
 // Fase A (deterministica): aggiorna i 3 flag meccanici secondo REGOLE ESPLICITE.
 //   - core_only_mode = ON  ⇔ BTC close < SMA200
 //   - bear_dca_enabled = ON ⇔ macro=risk-off AND F&G < soglia
-//   - exclude_fiat_commodity = sempre ON
+//   - exclude_fiat_commodity = sempre OFF: il satellite valuta tutto Kraken,
+//     incluse azioni tokenizzate/xStocks, forex e commodity se liquide.
 //   Ogni cambio → riga in ai_flag_changes + audit in events_log.
 // Fase B (AI osserva e propone): genera report "investment officer" + eventuali
 //   proposte di modifica parametri (status=pending). MAI applicate in automatico.
@@ -45,7 +46,7 @@ const ReportSchema = z.object({
 });
 type ReportT = z.infer<typeof ReportSchema>;
 
-const SYSTEM_PROMPT = `Sei l'AI Supervisor di un bot crypto Kraken (strategia v3 Core-Led + Satellite + Bear-DCA).
+const SYSTEM_PROMPT = `Sei l'AI Supervisor di un bot Kraken multi-asset (strategia v4 Core-Led + Satellite + Bear-DCA).
 Scrivi un report in italiano stile "investment officer": chiaro, sobrio, con numeri.
 NON applichi nulla. OSSERVI e, se necessario, PROPONI modifiche che andranno approvate dall'utente e validate out-of-sample.
 
@@ -57,7 +58,8 @@ LINEE GUIDA:
 - Niente proposte vaghe: ogni proposta ha titolo, motivazione e param_diff esatto.
 - "Status quo" è spesso la scelta corretta. Se non hai proposte, lascia l'array vuoto.
 
-NON proporre mai di cambiare modalità (paper/live), capitale, kill-switch, o i 3 flag automatici (sono gestiti da regole deterministiche).`;
+NON proporre mai di cambiare modalità (paper/live), capitale, kill-switch, o i 3 flag automatici (sono gestiti da regole deterministiche).
+Regola fissa: exclude_fiat_commodity resta OFF perché la strategia deve valutare anche token azionari/xStocks, forex e commodity presenti su Kraken; non suggerire di riattivarlo.`;
 
 export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")({
   server: {
@@ -111,12 +113,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
                   inputs: { macro_regime: macro, fg_value: fgValue, threshold: fgThreshold },
                 }
               : null;
-            const ruleExFiat = { rule: "Sempre ON sul satellite (igiene universo)", value: true, inputs: {} };
+            const ruleExFiat = { rule: "Sempre OFF: includi tutto Kraken multi-asset (xStocks/token azionari, forex, commodity) se supera liquidità/spread", value: false, inputs: { preset } };
 
             const desired = {
               core_only_mode: ruleCore?.value ?? !!u.core_only_mode,
               bear_dca_enabled: ruleBear?.value ?? !!u.bear_dca_enabled,
-              exclude_fiat_commodity: true,
+              exclude_fiat_commodity: false,
             };
             const current = {
               core_only_mode: !!u.core_only_mode,
@@ -132,7 +134,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
               flagChanges.push({ flag: "bear_dca_enabled", from: current.bear_dca_enabled, to: desired.bear_dca_enabled, rule: ruleBear.rule, inputs: ruleBear.inputs });
             }
             if (desired.exclude_fiat_commodity !== current.exclude_fiat_commodity) {
-              flagChanges.push({ flag: "exclude_fiat_commodity", from: current.exclude_fiat_commodity, to: true, rule: ruleExFiat.rule, inputs: {} });
+              flagChanges.push({ flag: "exclude_fiat_commodity", from: current.exclude_fiat_commodity, to: false, rule: ruleExFiat.rule, inputs: ruleExFiat.inputs });
             }
 
             if (flagChanges.length > 0) {
@@ -141,6 +143,13 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
                 core_only_mode: desired.core_only_mode,
                 bear_dca_enabled: desired.bear_dca_enabled,
                 exclude_fiat_commodity: desired.exclude_fiat_commodity,
+                ai_supervisor_state: {
+                  last_run_at: new Date().toISOString(),
+                  last_decision: desired,
+                  reasoning: ruleExFiat.rule,
+                  confidence: "high",
+                  changed_flags: flagChanges.map((c) => c.flag),
+                },
               } as any).eq("user_id", userId);
               await supabaseAdmin.from("ai_flag_changes").insert(flagChanges.map((c) => ({
                 user_id: userId,
@@ -157,6 +166,16 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
                 message: `Flag aggiornati (regole deterministiche): ${flagChanges.map((c) => `${c.flag}=${c.to ? "ON" : "OFF"}`).join(", ")}`,
                 payload: { changes: flagChanges } as never,
               });
+            } else {
+              await supabaseAdmin.from("settings").update({
+                ai_supervisor_state: {
+                  last_run_at: new Date().toISOString(),
+                  last_decision: desired,
+                  reasoning: ruleExFiat.rule,
+                  confidence: "high",
+                  changed_flags: [],
+                },
+              } as any).eq("user_id", userId);
             }
 
             // ===== KPI snapshot =====

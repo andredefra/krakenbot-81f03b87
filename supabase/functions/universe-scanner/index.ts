@@ -14,16 +14,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Asset da escludere dal satellite: core + stablecoin (sempre)
+// Asset da escludere dal satellite: core + stablecoin (sempre).
+// Fiat, commodity e token azionari NON sono esclusi nella v4 quando
+// exclude_fiat_commodity=false: Kraken va valutato come universo multi-asset.
 const EXCLUDE = new Set([
   "BTC", "XBT", "ETH",
-  "USDT", "USDC", "DAI", "USD", "EUR", "USDS", "PYUSD", "TUSD", "RLUSD",
-  "EURT", "GBP", "JPY", "CAD", "AUD", "CHF",
+  "USDT", "USDC", "DAI", "USD", "USDS", "PYUSD", "TUSD", "RLUSD",
 ]);
-// Token tokenizzati di fiat o commodity (oro, argento): esclusi se exclude_fiat_commodity = true (v3)
+// Fiat / commodity esclusi solo se il flag legacy viene riattivato.
 const FIAT_COMMODITY = new Set([
-  "PAXG", "XAUT", "ZEUR", "ZUSD", "EURT", "USDP", "USTC", "XAGT",
+  "PAXG", "XAUT", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "ZEUR", "ZUSD", "EURT", "USDP", "USTC", "XAGT",
 ]);
+
+function normalizeKrakenAsset(raw: string): string {
+  const map: Record<string, string> = {
+    XXBT: "BTC", XBT: "BTC", XETH: "ETH", XXRP: "XRP", XLTC: "LTC",
+    XXDG: "DOGE", XDG: "DOGE", ZUSD: "USD", ZEUR: "EUR", ZGBP: "GBP",
+    ZJPY: "JPY", ZCAD: "CAD", ZAUD: "AUD", ZCHF: "CHF",
+  };
+  return map[raw] ?? raw.replace(/^X(?=[A-Z]{3,})/, "").replace(/\.[FSM]$/, "");
+}
 
 type AssetPair = {
   altname: string;
@@ -53,7 +63,9 @@ Deno.serve(async (req) => {
     const minVol = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_volume_24h)).filter((n) => !Number.isNaN(n)), 5_000_000);
     const maxSpread = Math.min(...(settingsRows ?? []).map((s) => Number(s.max_spread_pct)).filter((n) => !Number.isNaN(n)), 0.3);
     const minAge = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_listing_age_days)).filter((n) => !Number.isNaN(n)), 60);
-    // Se ALMENO uno degli utenti attivi ha attivato exclude_fiat_commodity, applichiamo l'esclusione (conservativo)
+    // Legacy: se resta acceso da vecchie impostazioni, esclude fiat/commodity.
+    // L'AI Supervisor v4 lo forza a false per includere xStocks/token azionari,
+    // commodity e forex se superano volume/spread/età.
     const excludeFiatCommodity = (settingsRows ?? []).some((s) => Boolean(s.exclude_fiat_commodity));
 
     // 1) Lista coppie
@@ -69,9 +81,9 @@ Deno.serve(async (req) => {
       return q === "USD";
     });
 
-    // Costruisci mapping pairKey -> baseSymbol (normalizzato senza X/Z prefisso Kraken)
+    // Costruisci mapping pairKey -> baseSymbol normalizzato (EUR, PAXG, xStocks, ecc.)
     const pairList: Array<{ key: string; altname: string; base: string }> = usdPairs.map(([key, p]) => {
-      const base = (p.base || "").replace(/^X(?=[A-Z]{3,})/, "").replace(/^XBT$/, "BTC");
+      const base = normalizeKrakenAsset(p.base || "");
       return { key, altname: p.altname, base };
     }).filter((p) => !EXCLUDE.has(p.base) && !(excludeFiatCommodity && FIAT_COMMODITY.has(p.base)));
 
