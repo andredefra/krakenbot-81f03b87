@@ -32,6 +32,12 @@ function tag(mode: "paper" | "live") {
   return mode === "live" ? "[LIVE]" : "[PAPER]";
 }
 
+// Safe number→fixed: tollerante a undefined/null/NaN.
+function f(n: unknown, d = 2): string {
+  const x = Number(n);
+  return (Number.isFinite(x) ? x : 0).toFixed(d);
+}
+
 export function fmtOpen(args: {
   mode: "paper" | "live";
   asset: string;
@@ -44,11 +50,11 @@ export function fmtOpen(args: {
 }) {
   return [
     `🟢 NUOVO TRADE — ${args.asset}   ${tag(args.mode)}`,
-    `Ingresso: ${args.price.toFixed(4)} USD`,
-    `Quantità: ${args.qty.toFixed(6)} ${args.asset}`,
-    `Valore: ${args.value.toFixed(2)} USD (${args.pctOfPortfolio.toFixed(1)}% del portafoglio)`,
+    `Ingresso: ${f(args.price, 4)} USD`,
+    `Quantità: ${f(args.qty, 6)} ${args.asset}`,
+    `Valore: ${f(args.value, 2)} USD (${f(args.pctOfPortfolio, 1)}% del portafoglio)`,
     `Motivo: ${args.reason}`,
-    `💼 Portafoglio totale: ${args.portfolioTotal.toFixed(2)} USD`,
+    `💼 Portafoglio totale: ${f(args.portfolioTotal, 2)} USD`,
   ].join("\n");
 }
 
@@ -64,17 +70,17 @@ export function fmtClose(args: {
   pnlPct: number;
   duration: string;
   reason: string;
-  portfolioTotal: number;
+  portfolioTotal?: number;
 }) {
   const icon = args.win ? "✅" : "❌";
   return [
     `${icon} TRADE CHIUSO — ${args.asset}   ${tag(args.mode)}`,
-    `Ingresso: ${args.entryValue.toFixed(2)} USD @ ${args.entryPrice.toFixed(4)}`,
-    `Uscita:   ${args.exitValue.toFixed(2)} USD @ ${args.exitPrice.toFixed(4)}`,
-    `P/L: ${args.pnl.toFixed(2)} USD (${args.pnlPct.toFixed(2)}%)`,
+    `Ingresso: ${f(args.entryValue, 2)} USD @ ${f(args.entryPrice, 4)}`,
+    `Uscita:   ${f(args.exitValue, 2)} USD @ ${f(args.exitPrice, 4)}`,
+    `P/L: ${f(args.pnl, 2)} USD (${f(args.pnlPct, 2)}%)`,
     `Durata: ${args.duration}`,
     `Motivo uscita: ${args.reason}`,
-    `💼 Portafoglio totale: ${args.portfolioTotal.toFixed(2)} USD`,
+    `💼 Portafoglio totale: ${f(args.portfolioTotal, 2)} USD`,
   ].join("\n");
 }
 
@@ -98,12 +104,13 @@ export function fmtDailySummary(args: {
   fgValue: number | null;
   fgLabel: string;
 }) {
+  const dd = Number(args.dayDelta);
   const lines = [
     `📊 RIEPILOGO ${args.date}`,
-    `💼 Portafoglio: ${args.portfolioTotal.toFixed(2)} USD (${args.dayDelta >= 0 ? "+" : ""}${args.dayDelta.toFixed(2)} oggi)`,
+    `💼 Portafoglio: ${f(args.portfolioTotal, 2)} USD (${Number.isFinite(dd) && dd >= 0 ? "+" : ""}${f(dd, 2)} oggi)`,
     `Posizioni aperte: ${args.openCount}`,
     ...args.openLines.map((l) => `  • ${l}`),
-    `P/L realizzato oggi: ${args.realizedToday.toFixed(2)} USD`,
+    `P/L realizzato oggi: ${f(args.realizedToday, 2)} USD`,
     `Trade chiusi oggi: ${args.closedToday}`,
     `Regime: ${args.regime} | Fear&Greed: ${args.fgValue ?? "—"} (${args.fgLabel})`,
   ];
