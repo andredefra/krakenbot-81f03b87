@@ -644,6 +644,9 @@ export type Database = {
           mode: Database["public"]["Enums"]["trade_mode"]
           monthly_trade_cap: number
           paper_fee_bps: number
+          paper_seed_cash_usd: number | null
+          paper_seed_total_usd: number | null
+          paper_seeded_at: string | null
           rebalance_frequency: string
           regime_filter: string
           risk_per_trade_pct: number
@@ -703,6 +706,9 @@ export type Database = {
           mode?: Database["public"]["Enums"]["trade_mode"]
           monthly_trade_cap?: number
           paper_fee_bps?: number
+          paper_seed_cash_usd?: number | null
+          paper_seed_total_usd?: number | null
+          paper_seeded_at?: string | null
           rebalance_frequency?: string
           regime_filter?: string
           risk_per_trade_pct?: number
@@ -762,6 +768,9 @@ export type Database = {
           mode?: Database["public"]["Enums"]["trade_mode"]
           monthly_trade_cap?: number
           paper_fee_bps?: number
+          paper_seed_cash_usd?: number | null
+          paper_seed_total_usd?: number | null
+          paper_seeded_at?: string | null
           rebalance_frequency?: string
           regime_filter?: string
           risk_per_trade_pct?: number
