@@ -8,10 +8,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   KrakenApiError,
   fetchKrakenBalance,
+  fetchKrakenBalanceEx,
+  fetchKrakenOpenOrders,
+  fetchKrakenOpenPositions,
   fetchKrakenPublicTicker,
+  fetchKrakenTradeBalance,
   isFiat,
   normalizeKrakenAsset,
 } from "@/lib/kraken.server";
+import { fetchStockQuote, xStockBaseSymbol } from "@/lib/market-data.server";
 
 export type AssetClass = "crypto" | "stocks" | "futures" | "forex" | "cash";
 
@@ -53,6 +58,35 @@ export type PortfolioResult =
       };
     };
 
+export type LivePositionItem = {
+  source: "kraken-live";
+  kind: "spot" | "margin" | "order";
+  asset: string;
+  side: "long" | "short" | "buy" | "sell" | null;
+  qty: number;
+  entry_price: number | null;
+  current_price: number | null;
+  entry_value: number | null;
+  opened_at: string | null;
+  status: "open";
+  rawId?: string;
+};
+
+function krakenErrorDto(e: unknown) {
+  if (e instanceof KrakenApiError) {
+    return { code: e.code, message: e.message, httpStatus: e.httpStatus, krakenErrors: e.krakenErrors, hint: e.hint };
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return { code: "UNKNOWN", message: msg, httpStatus: 0, krakenErrors: [] as string[], hint: null as string | null };
+}
+
+function classifyAsset(symbol: string): AssetClass {
+  if (isFiat(symbol)) return "cash";
+  if (xStockBaseSymbol(symbol)) return "stocks";
+  if (/^[A-Z]{3}[A-Z]{3}$/.test(symbol) && /USD|EUR|GBP|JPY|CHF|CAD|AUD/.test(symbol)) return "forex";
+  return "crypto";
+}
+
 // ----------------------------------------------------------------------------
 // Helper: prova a recuperare prezzi USD per una lista di asset Kraken normali
 // (es. BTC, ETH, SOL). Restituisce mappa { BTC: 65000, ETH: 3200, ... }.
@@ -87,6 +121,82 @@ async function priceMapForCrypto(symbols: string[]): Promise<Record<string, numb
   } catch {
     return {};
   }
+}
+
+export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: string) {
+  const [balanceEx, openOrders, openPositions] = await Promise.allSettled([
+    fetchKrakenBalanceEx(apiKey, apiSecret),
+    fetchKrakenOpenOrders(apiKey, apiSecret),
+    fetchKrakenOpenPositions(apiKey, apiSecret),
+  ]);
+
+  if (balanceEx.status === "rejected") throw balanceEx.reason;
+
+  const aggregated: Record<string, number> = {};
+  for (const [rawAsset, entry] of Object.entries(balanceEx.value)) {
+    const qty = Number(entry.balance ?? 0);
+    if (!Number.isFinite(qty) || qty === 0) continue;
+    const sym = normalizeKrakenAsset(rawAsset);
+    aggregated[sym] = (aggregated[sym] ?? 0) + qty;
+  }
+
+  const symbols = Object.keys(aggregated);
+  const cryptoSymbols = symbols.filter((s) => classifyAsset(s) === "crypto");
+  const prices = await priceMapForCrypto(cryptoSymbols);
+  const warnings: string[] = [];
+
+  for (const sym of symbols.filter((s) => classifyAsset(s) === "stocks")) {
+    const base = xStockBaseSymbol(sym);
+    if (!base) continue;
+    const quote = await fetchStockQuote(base);
+    if (quote.priceUsd != null) prices[sym] = quote.priceUsd;
+    else warnings.push(`Prezzo Finnhub non trovato per xStock ${sym}.`);
+  }
+
+  if (openOrders.status === "rejected") warnings.push(`OpenOrders non disponibile: ${krakenErrorDto(openOrders.reason).message}`);
+  if (openPositions.status === "rejected") warnings.push(`OpenPositions non disponibile: ${krakenErrorDto(openPositions.reason).message}`);
+
+  return {
+    balances: aggregated,
+    openOrders: openOrders.status === "fulfilled" ? openOrders.value.open : {},
+    openPositions: openPositions.status === "fulfilled" ? openPositions.value : {},
+    prices,
+    warnings,
+  };
+}
+
+export function livePositionsFromSnapshot(snapshot: Awaited<ReturnType<typeof loadLivePortfolioSnapshot>>): LivePositionItem[] {
+  const items: LivePositionItem[] = [];
+  for (const [asset, qty] of Object.entries(snapshot.balances)) {
+    if (isFiat(asset) || qty <= 0) continue;
+    const current = snapshot.prices[asset] ?? null;
+    items.push({
+      source: "kraken-live", kind: "spot", asset, side: "long", qty,
+      entry_price: null, current_price: current, entry_value: current == null ? null : qty * current,
+      opened_at: null, status: "open",
+    });
+  }
+  for (const [id, p] of Object.entries(snapshot.openPositions)) {
+    const asset = normalizeKrakenAsset(p.pair ?? id);
+    const qty = Number(p.vol ?? 0) - Number(p.vol_closed ?? 0);
+    const cost = Number(p.cost ?? 0);
+    items.push({
+      source: "kraken-live", kind: "margin", asset, side: p.type === "sell" ? "short" : "long", qty,
+      entry_price: qty ? cost / qty : null, current_price: null, entry_value: cost || null,
+      opened_at: p.time ? new Date(p.time * 1000).toISOString() : null, status: "open", rawId: id,
+    });
+  }
+  for (const [id, o] of Object.entries(snapshot.openOrders)) {
+    const asset = normalizeKrakenAsset(o.descr?.pair ?? id);
+    const qty = Math.max(0, Number(o.vol ?? 0) - Number(o.vol_exec ?? 0));
+    const price = Number(o.descr?.price ?? o.price ?? 0) || null;
+    items.push({
+      source: "kraken-live", kind: "order", asset, side: o.descr?.type === "sell" ? "sell" : "buy", qty,
+      entry_price: price, current_price: null, entry_value: price == null ? null : qty * price,
+      opened_at: o.opentm ? new Date(o.opentm * 1000).toISOString() : null, status: "open", rawId: id,
+    });
+  }
+  return items.sort((a, b) => (b.entry_value ?? 0) - (a.entry_value ?? 0));
 }
 
 // ============================================================================
