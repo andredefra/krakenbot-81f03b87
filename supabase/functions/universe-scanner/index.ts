@@ -150,6 +150,14 @@ Deno.serve(async (req) => {
       if (!uerr) { upserts += 1; if (eligible) eligibleCount += 1; }
     }
 
+    // Disattiva simboli legacy non più toccati in questo ciclo (es. ZEUR/XDG
+    // dopo normalizzazione a EUR/DOGE), così l'engine non usa righe stale.
+    await supa.from("universe").update({
+      eligible: false,
+      excluded_reason: "Stale: non presente nella scansione Kraken USD corrente",
+      last_checked: now,
+    }).lt("last_checked", now);
+
     console.log(`[universe-scanner] ${upserts} upserts, ${eligibleCount} eligible (minVol=${minVol}, maxSpread=${maxSpread}%, minAge=${minAge}d, exclFiatCom=${excludeFiatCommodity})`);
 
     return new Response(JSON.stringify({ ok: true, upserts, eligibleCount, thresholds: { minVol, maxSpread, minAge } }), {
