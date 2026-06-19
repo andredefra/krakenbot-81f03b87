@@ -189,7 +189,7 @@ function SettingsPage() {
                       <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">valori modificati</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      I valori salvati non corrispondono più al preset {storedPreset!.name}. Riallineali per tornare al default v2.
+                      I valori salvati non corrispondono più al preset {storedPreset!.name}. Riallineali per tornare al default v4.
                     </div>
                   </>
                 ) : (
