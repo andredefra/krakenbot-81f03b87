@@ -5,6 +5,7 @@
 import { createHash, createHmac } from "crypto";
 
 const KRAKEN_BASE = "https://api.kraken.com";
+let lastKrakenNonce = 0;
 
 // ----------------------------------------------------------------------------
 // Error type: porta SEMPRE in chiaro il codice/error string restituito da Kraken
@@ -52,6 +53,12 @@ function parseKrakenError(httpStatus: number, errors: string[]): KrakenApiError 
   });
 }
 
+function nextKrakenNonce(): string {
+  const now = Date.now() * 1000;
+  lastKrakenNonce = Math.max(lastKrakenNonce + 1, now);
+  return String(lastKrakenNonce);
+}
+
 function signKrakenRequest(
   path: string,
   bodyParams: URLSearchParams,
@@ -81,7 +88,7 @@ async function krakenPrivate<T>(
       hint: "Aggiungi entrambi i secrets nel pannello Lovable Cloud → Secrets.",
     });
   }
-  const nonce = String(Date.now() * 1000);
+  const nonce = nextKrakenNonce();
   const body = new URLSearchParams({ nonce, ...extra });
   const signature = signKrakenRequest(path, body, nonce, apiSecret);
   const res = await fetch(`${KRAKEN_BASE}${path}`, {
@@ -109,8 +116,10 @@ async function krakenPrivate<T>(
     });
   }
   if (!res.ok || (json?.error && json.error.length > 0)) {
-    console.error("[Kraken] error", { path, httpStatus: res.status, errors: json?.error });
-    throw parseKrakenError(res.status, json?.error?.length ? json.error : [`HTTP ${res.status}`]);
+    const errors = json?.error?.length ? json.error : [`HTTP ${res.status}`];
+    const parsed = parseKrakenError(res.status, errors);
+    console.error("[Kraken] error", { path, httpStatus: res.status, code: parsed.code, errors });
+    throw parsed;
   }
   return json!.result as T;
 }
@@ -181,6 +190,52 @@ export async function fetchKrakenTradeBalance(
   asset = "ZUSD",
 ): Promise<KrakenTradeBalance> {
   return krakenPrivate<KrakenTradeBalance>("/0/private/TradeBalance", apiKey, apiSecret, { asset });
+}
+
+export type KrakenOpenOrder = {
+  refid?: string | null;
+  userref?: number;
+  status?: string;
+  opentm?: number;
+  descr?: { pair?: string; type?: string; ordertype?: string; price?: string; price2?: string; leverage?: string; order?: string };
+  vol?: string;
+  vol_exec?: string;
+  cost?: string;
+  fee?: string;
+  price?: string;
+  stopprice?: string;
+  limitprice?: string;
+  misc?: string;
+  oflags?: string;
+};
+
+export type KrakenOpenOrdersResult = { open: Record<string, KrakenOpenOrder> };
+
+export async function fetchKrakenOpenOrders(apiKey: string, apiSecret: string): Promise<KrakenOpenOrdersResult> {
+  return krakenPrivate<KrakenOpenOrdersResult>("/0/private/OpenOrders", apiKey, apiSecret);
+}
+
+export type KrakenOpenPosition = {
+  ordertxid?: string;
+  pair?: string;
+  time?: number;
+  type?: string;
+  ordertype?: string;
+  cost?: string;
+  fee?: string;
+  vol?: string;
+  vol_closed?: string;
+  margin?: string;
+  value?: string;
+  net?: string;
+  terms?: string;
+  rollovertm?: string;
+  misc?: string;
+  oflags?: string;
+};
+
+export async function fetchKrakenOpenPositions(apiKey: string, apiSecret: string): Promise<Record<string, KrakenOpenPosition>> {
+  return krakenPrivate<Record<string, KrakenOpenPosition>>("/0/private/OpenPositions", apiKey, apiSecret);
 }
 
 // ----------------------------------------------------------------------------
