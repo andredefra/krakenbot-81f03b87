@@ -223,13 +223,25 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const btcCloses = await fetchKrakenDailyCloses("BTC", Math.max(macroPeriod + 10, 220));
   const btcSma200 = sma(btcCloses, macroPeriod);
   const btcSma50 = sma(btcCloses, midPeriod);
-  const btcLast = prices["BTC"] ?? btcCloses[btcCloses.length - 1];
+  const btcLastRaw = prices["BTC"] ?? btcCloses[btcCloses.length - 1];
+  if (!Number.isFinite(btcLastRaw)) {
+    const msg = "Prezzo BTC non disponibile da Kraken: ciclo posticipato";
+    await log(supa, userId, "warn", "trading-engine", msg);
+    await sendTelegram(fmtError({ component: "trading-engine", message: msg, action: "ciclo posticipato" }));
+    await supa.from("portfolio_snapshots").insert({
+      user_id: userId, total_value: portfolioTotal, cash_value: cash,
+      positions_value: positionsValue, realized_pnl_day: realizedToday,
+      core_value: coreValue, satellite_value: satValue,
+    });
+    return;
+  }
+  const btcLast = Number(btcLastRaw);
   const macroOn = btcSma200 != null && btcLast > btcSma200;
   const macroReason = btcSma200 == null
     ? `Dati BTC insufficienti per SMA${macroPeriod}`
     : macroOn
-      ? `BTC ${btcLast.toFixed(0)} sopra SMA${macroPeriod} ${btcSma200.toFixed(0)} → core investito`
-      : `BTC ${btcLast.toFixed(0)} sotto SMA${macroPeriod} ${btcSma200.toFixed(0)} → core in stable`;
+      ? `BTC ${btcLast.toFixed(0)} sopra SMA${macroPeriod} ${Number(btcSma200 ?? 0).toFixed(0)} → core investito`
+      : `BTC ${btcLast.toFixed(0)} sotto SMA${macroPeriod} ${Number(btcSma200 ?? 0).toFixed(0)} → core in stable`;
 
   // 9. REGIME MEDIO (governa il Satellite) — BTC vs SMA50 + F&G
   const fg = await fetchFearGreed();
@@ -238,9 +250,10 @@ async function runCycle(supa: ReturnType<typeof createClient>, settings: Setting
   const mesoOn = midUptrend && !fgGreedExtreme;
   let mesoReason = "";
   if (btcSma50 == null) mesoReason = `Dati BTC insufficienti per SMA${midPeriod}`;
-  else if (!midUptrend) mesoReason = `BTC sotto SMA${midPeriod} ${btcSma50.toFixed(0)} → satellite risk-off`;
+  else if (!midUptrend) mesoReason = `BTC sotto SMA${midPeriod} ${Number(btcSma50 ?? 0).toFixed(0)} → satellite risk-off`;
   else if (fgGreedExtreme) mesoReason = `F&G ${fg?.value} > ${fgGreedCap} (Extreme Greed) → satellite risk-off`;
   else mesoReason = `BTC sopra SMA${midPeriod}, F&G ${fg?.value ?? "?"} → satellite risk-on`;
+
 
   // Sentiment snapshots
   if (fg) await supa.from("sentiment_snapshots").insert({
