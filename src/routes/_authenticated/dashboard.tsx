@@ -8,11 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatUsd, formatPct, pnlClass } from "@/lib/format";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { TrendingUp, TrendingDown, Compass, Activity, Gauge, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, Compass, Activity, Gauge, AlertCircle, RefreshCw } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 import { getDiagnostics } from "@/lib/diagnostics.functions";
-import { getLivePortfolio } from "@/lib/portfolio.functions";
+import { getLivePortfolio, seedPaperFromKraken } from "@/lib/portfolio.functions";
 import { PortfolioPieChart } from "@/components/dashboard/PortfolioPieChart";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+
 
 type Timeframe = "1H" | "1D" | "1M" | "3M" | "1Y" | "ALL";
 const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
