@@ -109,10 +109,9 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
                     cx="50%" cy="50%"
                     innerRadius={50} outerRadius={95}
                     paddingAngle={2}
-                    onClick={(d) => {
-                      if (!drillClass && (d as { classKey?: AssetClass }).classKey) {
-                        setDrillClass((d as { classKey: AssetClass }).classKey);
-                      }
+                    onClick={(d: unknown) => {
+                      const ck = (d as { classKey?: AssetClass }).classKey;
+                      if (!drillClass && ck) setDrillClass(ck);
                     }}
                     style={{ cursor: drillClass ? "default" : "pointer" }}
                   >
@@ -139,24 +138,23 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
                 aggiornato {new Date(data.fetchedAt).toLocaleString("it-IT")}
               </div>
               <div className="space-y-1 mt-3">
-                {pieData.map((p, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center justify-between text-sm rounded-md px-2 py-1.5 ${!drillClass && (p as { classKey?: AssetClass }).classKey ? "cursor-pointer hover:bg-muted/50" : ""}`}
-                    onClick={() => {
-                      if (!drillClass && (p as { classKey?: AssetClass }).classKey) {
-                        setDrillClass((p as { classKey: AssetClass }).classKey);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="size-2.5 rounded-sm" style={{ background: p.color }} />
-                      <span className="font-medium">{p.name}</span>
-                      <span className="text-xs text-muted-foreground">{p.sub}</span>
+                {pieData.map((p, i) => {
+                  const ck = (p as unknown as { classKey?: AssetClass }).classKey;
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-center justify-between text-sm rounded-md px-2 py-1.5 ${!drillClass && ck ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                      onClick={() => { if (!drillClass && ck) setDrillClass(ck); }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-sm" style={{ background: p.color }} />
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-muted-foreground">{p.sub}</span>
+                      </div>
+                      <div className="tabular-nums">{formatUsd(p.value)} <span className="text-xs text-muted-foreground">({((p.value / data.totalValueUsd) * 100).toFixed(1)}%)</span></div>
                     </div>
-                    <div className="tabular-nums">{formatUsd(p.value)} <span className="text-xs text-muted-foreground">({((p.value / data.totalValueUsd) * 100).toFixed(1)}%)</span></div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {data.warnings.length > 0 && (
                 <div className="text-xs text-amber-500 mt-2">

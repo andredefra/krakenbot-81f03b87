@@ -167,7 +167,7 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
     // ----------- PAPER -----------
     const [posRes, snapRes] = await Promise.all([
       supabase.from("positions")
-        .select("asset, asset_class, qty, entry_price, entry_value, last_price")
+        .select("asset, asset_class, qty, entry_price, entry_value, current_price")
         .eq("user_id", userId)
         .eq("status", "open")
         .eq("mode", "paper"),
@@ -179,16 +179,16 @@ export const getLivePortfolio = createServerFn({ method: "GET" })
         .limit(1)
         .maybeSingle(),
     ]);
-    const positions = (posRes.data ?? []) as Array<{
+    const positions = ((posRes.data ?? []) as unknown) as Array<{
       asset: string; asset_class: string | null; qty: number;
-      entry_price: number; entry_value: number; last_price: number | null;
+      entry_price: number; entry_value: number; current_price: number | null;
     }>;
     const snap = snapRes.data;
     const byClass = new Map<AssetClass, PortfolioItem[]>();
     let positionsValue = 0;
     for (const p of positions) {
       const cls = ((p.asset_class as AssetClass) ?? "crypto");
-      const px = Number(p.last_price ?? p.entry_price ?? 0);
+      const px = Number(p.current_price ?? p.entry_price ?? 0);
       const valueUsd = Number(p.qty) * px;
       positionsValue += valueUsd;
       if (!byClass.has(cls)) byClass.set(cls, []);
