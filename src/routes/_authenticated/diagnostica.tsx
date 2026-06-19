@@ -429,7 +429,7 @@ function KrakenConnectionCard() {
             <Plug className="size-5" /> Connessione Kraken
           </CardTitle>
           <CardDescription>
-            Chiama <code>/0/private/Balance</code> con KRAKEN_API_KEY / KRAKEN_API_SECRET dai Secrets. Riporta il vero errore Kraken (non un generico).
+            Chiama <code>/0/private/BalanceEx</code> con KRAKEN_API_KEY / KRAKEN_API_SECRET dai Secrets. Riporta il vero errore Kraken (non un generico).
           </CardDescription>
         </div>
         <Button size="sm" onClick={() => m.mutate()} disabled={m.isPending}>
