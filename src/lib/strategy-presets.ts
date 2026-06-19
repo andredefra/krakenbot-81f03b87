@@ -312,13 +312,14 @@ export function detectPreset(settings: Record<string, unknown> | null | undefine
 // Finnhub News e Alpha Vantage News forniscono sentiment fondamentale per
 // stocks (via xStocks su Kraken) e forex.
 
-const SENTIMENT_BASE: Record<Exclude<PresetId, "custom">, Record<string, number>> = {
+export const SENTIMENT_BASE: Record<Exclude<PresetId, "custom">, Record<string, number>> = {
   conservative: { fear_greed: 0.55, lunarcrush: 0.15, santiment: 0.10, finnhub_news: 0.10, alpha_vantage_news: 0.10, news: 0.0 },
   balanced:     { fear_greed: 0.40, lunarcrush: 0.20, santiment: 0.15, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
   aggressive:   { fear_greed: 0.25, lunarcrush: 0.30, santiment: 0.20, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
 };
 
-const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "finnhub_news", "alpha_vantage_news", "news"] as const;
+export const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "finnhub_news", "alpha_vantage_news", "news"] as const;
+
 
 export function deriveSentimentWeights(
   presetId: PresetId,
