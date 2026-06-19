@@ -1,106 +1,63 @@
-## Obiettivi
+# Fix `getPortfolio` / `getOpenPositions` in LIVE + aggiungi Finnhub
 
-1. **Strategia V4** — estensione del paniere oltre le crypto: aggiungere **azioni**, **futures** e **forex** con allocazioni per preset (Conservativo / Bilanciato / Aggressivo).
-2. **Pie chart live del portafoglio** — composizione generale (per asset class) + drill-down per singolo asset.
-3. **Fix getPortfolio** — niente più "An error occurred" generico, niente saldo finto 318 USD, fonte coerente Paper vs Live, test diagnostico Kraken.
+## Cause confermate dal codice
 
----
+1. **"An error occurred." nella chat** = comportamento di default dell'AI SDK quando un tool lancia un errore. `src/routes/api/chat.ts` non passa `onError` a `toUIMessageStreamResponse`, quindi l'errore reale di Kraken (es. `EAPI:Invalid signature`, `Permission denied`, `MISSING_CREDENTIALS`) viene mascherato. Le tue chiavi sono OK lato Kraken (screenshot conferma tutti i permessi attivi) → il problema è di propagazione, non di permessi.
 
-## 1) Strategia V4 — multi-asset
+2. **`getOpenPositions` ritorna `[]`** perché interroga solo la tabella `positions` (dati paper). In LIVE deve leggere da Kraken (`OpenOrders` + saldi spot > 0 + `OpenPositions` per margin/futures).
 
-### Modello concettuale
-Ogni preset definisce due livelli di allocazione:
-- **Asset class split** (somma = 100%): `crypto / stocks / futures / forex`.
-- Dentro ogni classe: stesso schema core/satellite già esistente.
+3. **`getPortfolio` in LIVE può fallire** anche per il nonce: usa `Date.now()*1000` ma se la tua key Kraken Pro è già usata altrove (es. webapp Kraken o un'altra app) il nonce può risultare troppo basso → `EAPI:Invalid nonce`. La causa esatta la vedremo subito una volta sbloccata la propagazione errori.
 
-Proposta di default V4:
+4. **Azioni / futures**: Kraken offre **xStocks** (token derivati di azioni) tradabili come coppie spot crypto (es. `AAPLxUSD`). Per i prezzi reference di mercato azionario/forex useremo **Finnhub** (nuovo secret) + Alpha Vantage (già presente) come fallback.
 
-| Preset | Crypto | Azioni | Futures | Forex | Note |
-|---|---|---|---|---|---|
-| Conservativo | 60% | 35% | 0% | 5% | Azioni = ETF large cap (es. SPY/VTI), forex solo EUR/USD hedge |
-| Bilanciato | 50% | 30% | 10% | 10% | Futures su indici principali, forex majors |
-| Aggressivo | 45% | 25% | 20% | 10% | Futures con leva contenuta, forex majors+cross |
+## Cosa farò (build mode)
 
-I valori esatti restano modificabili dalla pagina Strategia.
+### 1. Propagazione errori chat (fix lampante)
+- `src/routes/api/chat.ts` → aggiungo `onError: (err) => err instanceof Error ? err.message : String(err)` a `toUIMessageStreamResponse(...)` così la chat mostra il messaggio Kraken reale invece di "An error occurred.".
+- `src/lib/assistant/tools.server.ts` → nei catch di `getPortfolio` (e nuovi tool) ritorno sempre `{ ok: false, error: {...} }` invece di throw, così l'assistente può spiegarlo all'utente senza interrompere lo stream.
 
-### Cambiamenti DB (migration)
-- `settings`: aggiungere `asset_class_split jsonb` (default per preset), `stocks_universe text[]`, `futures_universe text[]`, `forex_universe text[]`.
-- `positions`: aggiungere `asset_class text` (`crypto|stock|future|forex`, default `crypto` per dati esistenti) + indice.
-- `universe`: aggiungere colonna `asset_class` con default `crypto`.
-- `engine_diagnostics`: aggiungere `asset_class_exposure jsonb` per riportare il peso effettivo.
+### 2. `getOpenPositions` consapevole della modalità
+In `tools.server.ts`:
+- Legge `settings.mode`.
+- **paper** → comportamento attuale (tabella `positions`).
+- **live** → chiama Kraken:
+  - `/0/private/OpenOrders` per ordini aperti
+  - `/0/private/OpenPositions` per posizioni margin/futures
+  - `BalanceEx` filtrato per `qty > 0` come "holding aperti" spot
+  Ritorna un array unificato `{ source: 'kraken-live', asset, side, qty, entry_price, current_price, opened_at, kind: 'spot'|'margin'|'order' }`.
+- Stessa policy errori: `{ ok: false, error }` se Kraken risponde male.
 
-### Codice
-- `src/lib/strategy-presets.ts`: estendere `PresetValues` con `asset_class_split` e universi per classe; aggiornare i 3 preset; aggiornare `detectPreset`.
-- Backtest (`src/lib/backtest.server.ts`): supportare più classi (richiede serie OHLC anche per stocks/forex/futures). In assenza di feed, V4 backtest gira sulle classi con dati disponibili e segnala "no data" per le altre — niente numeri inventati.
-- Engine (`supabase/functions/trading-engine`): rispettare l'allocazione per classe. **In paper mode** simula su tutte le classi. **In live mode** esegue solo le classi supportate dal broker attivo (oggi solo Kraken → crypto + forex spot via coppie XBT/EUR ecc.). Stocks/futures = solo paper finché non connettiamo un broker dedicato; viene mostrato un badge "Solo Paper" sulla classe.
-- Pagina Strategia: nuova sezione "Allocazione per classe" con sliders + warning per classi paper-only.
+### 3. `getPortfolio` — diagnostica e nonce
+- Log server-side esteso (`console.error("[Kraken getPortfolio]", { httpStatus, krakenErrors })`) già presente in `kraken.server.ts` — aggiungo anche il `code` del tipo errore così appare nei runtime logs.
+- Nonce: passo da `Date.now()*1000` a un nonce monotonico per-istanza (`Math.max(lastNonce+1, Date.now()*1000)`) per evitare `Invalid nonce` quando il worker fa più chiamate ravvicinate.
+- Aggiungo fallback: se `Balance` fallisce con `Permission denied`, provo `TradeBalance` (richiede solo Query Funds) per restituire almeno l'equivalent balance EUR/USD.
 
-### Note importanti
-- **Non si attiva GO LIVE su classi senza broker.** Il gate live resta crypto-only fino a integrazione broker stocks/futures.
-- Documentare la cosa in `STRATEGIA.md` (nuova sezione v4).
+### 4. Diagnostica pagina
+- `src/routes/_authenticated/diagnostica.tsx` → il pulsante "Test connessione Kraken" già esiste; aggiungo che mostri **il codice errore reale + hint** sotto al risultato (oggi mostra solo OK/KO generico).
 
----
+### 5. Azioni / futures / forex (xStocks + Finnhub)
+- Aggiungo il nuovo secret `FINNHUB_API_KEY` (chiave fornita: `d8qepb9r01qr03ni7tlgd8qepb9r01qr03ni7tm0`) tramite il tool secrets.
+- `src/lib/market-data.server.ts` (nuovo) — helper unificato:
+  - `fetchStockQuote(symbol)` → Finnhub `/quote` (USD)
+  - `fetchForexQuote(pair)` → Finnhub `/forex/rates` con Alpha Vantage fallback
+  - `fetchFuturesQuote(symbol)` → Finnhub `/quote` (es. `ES=F`, `NQ=F`)
+- `getPortfolio` LIVE: dopo aver letto i saldi Kraken, identifica i token xStocks (suffisso `x` es. `AAPLx`, `TSLAx`) e li classifica come asset class `stocks` invece di `crypto` nella pie chart.
+- L'engine V4 in modalità paper userà questi helper per simulare i prezzi di stocks/futures/forex.
 
-## 2) Pie chart live del portafoglio
+### 6. Allineamento `getPortfolio` ⇄ `getOpenPositions`
+Entrambi useranno la stessa funzione interna `loadLiveSnapshot()` che ritorna `{ balances, openOrders, openPositions, prices }`, così non possono divergere.
 
-Nuovo componente `PortfolioPieChart` in `src/components/dashboard/`:
-- **Vista 1 (generale)**: pie per asset class (crypto / stocks / futures / forex / cash).
-- **Vista 2 (dettaglio)**: click su uno spicchio → pie dei singoli asset di quella classe (es. BTC 40%, ETH 25%, SOL 10%…).
-- Toggle a tab sopra il grafico.
-- Dati da una nuova server fn `getPortfolioComposition` che:
-  - In **Live**: usa Kraken `Balance` + prezzi spot per valorizzare in USD.
-  - In **Paper**: usa la tabella `positions` (open) + cash simulato.
-- Aggiunto nella pagina Dashboard sotto la curva equity.
-- Usa `recharts` `<PieChart>` (già in progetto).
+## Cosa devi fare tu
 
----
+1. **Approvare il piano** (poi passo in build mode).
+2. Quando ti chiederò il secret, **confermare l'aggiunta di `FINNHUB_API_KEY`** (la chiave la inserisci tu nel form sicuro — non la metto nel codice).
+3. `ALPHA_VANTAGE_API_KEY` è già configurata, non serve toccarla. Anche `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` sono già presenti.
 
-## 3) Fix getPortfolio + Kraken connection
+## Sequenza esecuzione
 
-### Cause probabili dell'errore generico
-- L'handler attuale legge solo `portfolio_snapshots` e non interroga Kraken in tempo reale → il "318 USD" è uno snapshot vecchio (paper) mostrato anche in modalità live = bug grave.
-- Quando si tenta una chiamata Kraken, l'errore Kraken (`error: ["EAPI:Invalid key"]` ecc.) viene incapsulato in un generico `throw new Error("...")` che lato UI diventa "An error occurred".
+1. Fix `onError` chat + `getOpenPositions` live + nonce monotonico + log estesi → **vedrai subito il vero errore Kraken in chat**.
+2. Aggiunta `FINNHUB_API_KEY` secret.
+3. Helper `market-data.server.ts` + classificazione xStocks nella pie chart.
+4. Diagnostica pagina con errore Kraken dettagliato.
 
-### Cosa cambia
-
-**a) Kraken client (`src/lib/kraken.server.ts`)**
-- Nuova funzione `fetchKrakenBalanceEx(apiKey, apiSecret)` che chiama `/0/private/BalanceEx`.
-- Nuova funzione `fetchKrakenTradeBalance(apiKey, apiSecret, asset="ZUSD")` per equity totale + margin.
-- Tutte le funzioni private:
-  - Loggano `status` HTTP + payload `error[]` completi (server side, non al client).
-  - Lanciano `KrakenApiError` con codice (`EAPI:Invalid key`, `EAPI:Invalid signature`, `EAPI:Invalid nonce`, `EGeneral:Permission denied`, ecc.) e messaggio leggibile.
-- Verifica della firma resta quella attuale (HMAC-SHA512 di `path + SHA256(nonce + body)`, secret base64-decoded) — già conforme alla doc Kraken.
-
-**b) Server fn `getLivePortfolio` (nuova, `src/lib/portfolio.functions.ts`)**
-- Protetta con `requireSupabaseAuth`.
-- Legge mode da `settings`:
-  - **paper** → ritorna composizione e equity calcolata dalle `positions` paper + cash (da `portfolio_snapshots` più recente in mode=paper). Marca `source: "paper"`.
-  - **live** → carica `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` dai secrets, chiama `BalanceEx` + `TradeBalance` + ticker per valorizzare. Marca `source: "kraken-live"`.
-- In caso di errore, ritorna `{ ok: false, error: { code, message, httpStatus, krakenError } }` con il **vero** messaggio Kraken — niente fallback a snapshot vecchi.
-
-**c) UI Dashboard**
-- Rimuovere qualunque numero hardcoded/placeholder; se `getLivePortfolio` fallisce in live mode, mostrare alert rosso: *"Impossibile recuperare il saldo da Kraken: {messaggio reale}"* + bottone "Vai a Diagnostica".
-- Mostrare un badge che indica la fonte: "Saldo live Kraken" vs "Portfolio simulato (Paper)".
-
-**d) Tool assistant `getPortfolio`**
-- Riscritto per richiamare `getLivePortfolio` invece di leggere solo `portfolio_snapshots`. In caso di errore Kraken, restituisce all'LLM il messaggio reale così la chat può spiegarlo all'utente.
-
-**e) Diagnostica Kraken**
-- Nella pagina `/diagnostica` aggiungere card "Connessione Kraken" con bottone "Test connessione" che chiama una nuova server fn `testKrakenConnection`:
-  - Chiama `Balance` (endpoint leggero autenticato).
-  - Risposta: ✅ OK con timestamp, oppure ❌ con codice errore Kraken esatto e suggerimento (es. "Permission denied → abilita 'Query Funds' nelle API key Kraken").
-
-### Configurazione richiesta all'utente
-- I secrets `KRAKEN_API_KEY` e `KRAKEN_API_SECRET` risultano già presenti nei Supabase Secrets.
-- Verificare nel pannello Kraken che la API key abbia i permessi: **Query Funds**, **Query Open Orders & Trades**, **Query Closed Orders & Trades**. Per il trading live serviranno anche **Create & Modify Orders** e **Cancel Orders** (non necessari ora per il solo getPortfolio).
-
----
-
-## Ordine di esecuzione consigliato
-1. Migration DB (asset_class su settings/positions/universe + nuovo campo diagnostics).
-2. Fix Kraken: client + `getLivePortfolio` + tool assistant + diagnostica.
-3. Pie chart in dashboard usando `getLivePortfolio`.
-4. Estensione preset V4 + UI strategia + aggiornamento `STRATEGIA.md`.
-5. Backtest V4 (multi-class, segnalando classi senza dati).
-
-Procedo? Se sì, in build mode parto dalla migration e dal fix Kraken (priorità che hai segnalato come "errore gravissimo"), poi pie chart, poi V4.
+Approva per procedere.
