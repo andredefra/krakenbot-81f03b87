@@ -5,6 +5,15 @@
 
 export type PresetId = "conservative" | "balanced" | "aggressive" | "custom";
 
+// V4: ripartizione tra classi di asset (somma = 1).
+// stocks/futures/forex sono PAPER-ONLY finché non integriamo un broker dedicato.
+export type AssetClassSplit = {
+  crypto: number;
+  stocks: number;
+  futures: number;
+  forex: number;
+};
+
 export type PresetValues = {
   // Allocazione
   core_satellite_split: { core: number; satellite: number };

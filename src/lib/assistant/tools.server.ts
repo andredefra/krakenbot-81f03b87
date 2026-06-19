@@ -101,16 +101,53 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getPortfolio: tool({
-      description: "Ultimi snapshot di equity del portafoglio (per disegnare la curva o calcolare delta).",
-      inputSchema: z.object({ limit: z.number().int().min(1).max(200).default(50) }),
-      execute: async ({ limit }) => {
-        const { data, error } = await supabase
+      description: "Composizione live del portafoglio: in modalità LIVE interroga Kraken (Balance + Ticker) e ritorna saldi reali per asset class; in PAPER usa le posizioni simulate. In caso di errore Kraken restituisce il messaggio reale (es. 'EAPI:Invalid key', 'EGeneral:Permission denied') così puoi spiegarlo all'utente.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { getLivePortfolio } = await import("@/lib/portfolio.functions");
+        // chiamiamo direttamente la fn server (siamo già in contesto server)
+        // Ricreiamo l'invocazione passando context simulato non è banale,
+        // quindi eseguiamo la logica equivalente inline:
+        const { data: settings } = await supabase
+          .from("settings").select("mode").eq("user_id", userId).maybeSingle();
+        const mode = (settings?.mode === "live" ? "live" : "paper") as "live" | "paper";
+        if (mode === "live") {
+          try {
+            const { fetchKrakenBalance, fetchKrakenPublicTicker, normalizeKrakenAsset, isFiat, KrakenApiError } =
+              await import("@/lib/kraken.server");
+            const balance = await fetchKrakenBalance(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
+            const aggregated: Record<string, number> = {};
+            for (const [raw, v] of Object.entries(balance)) {
+              const qty = Number(v); if (!Number.isFinite(qty) || qty === 0) continue;
+              const s = normalizeKrakenAsset(raw); aggregated[s] = (aggregated[s] ?? 0) + qty;
+            }
+            const cryptoSyms = Object.keys(aggregated).filter((s) => !isFiat(s));
+            const ticker = cryptoSyms.length ? await fetchKrakenPublicTicker(cryptoSyms.map((s) => `${s === "BTC" ? "XBT" : s}USD`)) : {};
+            const holdings = Object.entries(aggregated).map(([sym, qty]) => {
+              if (isFiat(sym)) return { symbol: sym, qty, priceUsd: sym === "USD" ? 1 : null, valueUsd: sym === "USD" ? qty : null };
+              const k = Object.keys(ticker).find((kk) => kk.includes(sym === "BTC" ? "XBT" : sym));
+              const px = k ? ticker[k] : null;
+              return { symbol: sym, qty, priceUsd: px, valueUsd: px != null ? qty * px : null };
+            });
+            const totalUsd = holdings.reduce((a, h) => a + (h.valueUsd ?? 0), 0);
+            return { source: "kraken-live", mode, totalValueUsd: totalUsd, holdings, fetchedAt: new Date().toISOString() };
+            // KrakenApiError importata per typing
+            void KrakenApiError;
+          } catch (e) {
+            const err = e as { code?: string; httpStatus?: number; krakenErrors?: string[]; hint?: string | null; message: string };
+            return {
+              source: "kraken-live", mode, ok: false,
+              error: { code: err.code ?? "UNKNOWN", message: err.message, httpStatus: err.httpStatus ?? 0, krakenErrors: err.krakenErrors ?? [], hint: err.hint ?? null },
+            };
+          }
+        }
+        // paper
+        const { data: snaps } = await supabase
           .from("portfolio_snapshots")
           .select("ts,total_value,cash_value,positions_value,realized_pnl,unrealized_pnl")
-          .order("ts", { ascending: false })
-          .limit(limit);
-        if (error) throw new Error(error.message);
-        return data ?? [];
+          .eq("user_id", userId).eq("mode", "paper")
+          .order("ts", { ascending: false }).limit(20);
+        return { source: "paper", mode, snapshots: snaps ?? [] };
       },
     }),
 
