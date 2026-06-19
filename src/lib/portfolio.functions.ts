@@ -243,9 +243,14 @@ async function runSeedPaperFromKraken(
 
   const { data: existing } = await sb
     .from("settings")
-    .select("paper_seeded_at, paper_seed_total_usd, paper_seed_cash_usd")
+    .select("paper_seeded_at, paper_seed_total_usd, paper_seed_cash_usd, core_weights")
     .eq("user_id", userId)
     .maybeSingle();
+
+  const coreSymbols = new Set(
+    Object.keys(((existing as { core_weights?: Record<string, number> } | null)?.core_weights ?? { BTC: 0.6, ETH: 0.4 }))
+  );
+
 
   if (existing?.paper_seeded_at && !opts.force) {
     return {
@@ -282,7 +287,7 @@ async function runSeedPaperFromKraken(
       user_id: userId,
       asset: sym,
       asset_class: assetClass,
-      sleeve: "core",
+      sleeve: coreSymbols.has(sym) ? "core" : "satellite",
       side: "long",
       status: "open",
       mode: "paper",
