@@ -307,16 +307,18 @@ export function detectPreset(settings: Record<string, unknown> | null | undefine
 // ============================================================================
 // Sentiment weights derivati dal preset attivo + sorgenti abilitate
 // ============================================================================
-// Strategia v3: F&G è "gate" sempre primario e governa anche il trigger di
-// deep-fear del Bear-DCA. LunarCrush e Santiment sono solo conferme sul satellite.
+// Strategia v4: F&G è "gate" sempre primario e governa anche il trigger di
+// deep-fear del Bear-DCA. LunarCrush e Santiment confermano i satellite crypto.
+// Finnhub News e Alpha Vantage News forniscono sentiment fondamentale per
+// stocks (via xStocks su Kraken) e forex.
 
 const SENTIMENT_BASE: Record<Exclude<PresetId, "custom">, Record<string, number>> = {
-  conservative: { fear_greed: 0.7, lunarcrush: 0.2, santiment: 0.1, news: 0.0 },
-  balanced:     { fear_greed: 0.5, lunarcrush: 0.3, santiment: 0.2, news: 0.0 },
-  aggressive:   { fear_greed: 0.3, lunarcrush: 0.4, santiment: 0.3, news: 0.0 },
+  conservative: { fear_greed: 0.55, lunarcrush: 0.15, santiment: 0.10, finnhub_news: 0.10, alpha_vantage_news: 0.10, news: 0.0 },
+  balanced:     { fear_greed: 0.40, lunarcrush: 0.20, santiment: 0.15, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
+  aggressive:   { fear_greed: 0.25, lunarcrush: 0.30, santiment: 0.20, finnhub_news: 0.15, alpha_vantage_news: 0.10, news: 0.0 },
 };
 
-const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "news"] as const;
+const SENTIMENT_SOURCES = ["fear_greed", "lunarcrush", "santiment", "finnhub_news", "alpha_vantage_news", "news"] as const;
 
 export function deriveSentimentWeights(
   presetId: PresetId,
