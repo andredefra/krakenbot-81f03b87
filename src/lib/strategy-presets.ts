@@ -51,6 +51,12 @@ export type PresetValues = {
   max_positions: number;       // = max_satellite_positions
   max_position_pct: number;    // ≈ risk_per_trade_pct * 10 (size indicativa)
   stop_loss_pct: number;       // = stop_min_pct (floor)
+
+  // V4 — multi-asset
+  asset_class_split: AssetClassSplit;
+  stocks_universe: string[];
+  futures_universe: string[];
+  forex_universe: string[];
 };
 
 export type PresetDescription = {
