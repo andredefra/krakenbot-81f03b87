@@ -126,7 +126,10 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
                         background: "var(--color-popover)",
                         border: "1px solid var(--color-border)",
                         borderRadius: 8, fontSize: 12,
+                        color: "var(--color-popover-foreground)",
                       }}
+                      itemStyle={{ color: "var(--color-popover-foreground)" }}
+                      labelStyle={{ color: "var(--color-popover-foreground)" }}
                       formatter={(v: number, _n, ctx) => [`${formatUsd(v)} (${((v / data.totalValueUsd) * 100).toFixed(1)}%)`, ctx.payload.name]}
                     />
                     <Legend verticalAlign="bottom" height={28} wrapperStyle={{ fontSize: 11 }} />
