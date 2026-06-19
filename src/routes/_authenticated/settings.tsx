@@ -171,7 +171,7 @@ function SettingsPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Impostazioni rischio</h1>
-        <p className="text-sm text-muted-foreground">Parametri della Strategia v3 (Core-Led 70/30, fee Kraken reali, Bear-DCA opzionale). Modificabili in qualsiasi momento.</p>
+        <p className="text-sm text-muted-foreground">Parametri della <strong>Strategia v4 multi-asset</strong> (Core-Led 70/30 default Bilanciato, fee Kraken reali, Bear-DCA opzionale). Modificabili in qualsiasi momento.</p>
       </div>
 
       {q.data && (
