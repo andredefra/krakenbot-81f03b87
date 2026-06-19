@@ -66,6 +66,10 @@ export const Route = createFileRoute("/api/chat")({
           // assistant rows are saved with an empty message_id and overwrite
           // each other via the (user_id, message_id) unique index.
           generateMessageId: generateAssistantId,
+          onError: (error) => {
+            console.error("[chat stream]", error);
+            return error instanceof Error ? error.message : String(error);
+          },
           // Await persistence inside the stream's flush so the worker stays
           // alive until the upsert completes. The AI SDK awaits onFinish
           // before closing the stream.
