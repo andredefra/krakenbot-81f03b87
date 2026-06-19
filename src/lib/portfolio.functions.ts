@@ -282,7 +282,7 @@ async function runSeedPaperFromKraken(
       user_id: userId,
       asset: sym,
       asset_class: assetClass,
-      sleeve: "seed",
+      sleeve: "core",
       side: "long",
       status: "open",
       mode: "paper",
