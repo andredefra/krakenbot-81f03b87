@@ -1,61 +1,60 @@
-## Obiettivo
+## Diagnosi
 
-1. Pagina **Sentiment**: aggiungere Finnhub + Alpha Vantage sia come **fonti dati mercato** (stato API key, asset class servita) sia come **fonti sentiment news** con peso derivato dal preset.
-2. Rebrand UI **v3 → v4** in Diagnostica, Strategia, Sentiment, Dashboard + descrizioni preset.
-3. Allineare copy AI Supervisor / Diagnostica al fatto che ora la strategia è multi-asset (crypto + stocks via xStocks + forex).
+Quando importi il saldo da Kraken (`seed_from_kraken` in `src/lib/portfolio.functions.ts`) **ogni asset viene inserito con `sleeve = "core"`**, incluso SOL.
 
-## Modifiche
+Il trading-engine (`supabase/functions/trading-engine/index.ts`) però considera "core" SOLO gli asset elencati in `core_weights` (default `{ BTC: 0.6, ETH: 0.4 }`). Tutte le altre posizioni con `sleeve='core'`:
 
-### A) `src/lib/strategy-presets.ts`
-- Aggiungere a `SENTIMENT_BASE` due nuove sorgenti: `finnhub_news` e `alpha_vantage_news`. Pesi base proposti (somma normalizzata dal `derive`):
+- non vengono mai rifornite/riequilibrate in macro risk-on,
+- vengono **chiuse tutte** nel ramo macro risk-off (riga 285-289: `for (const p of corePos) closePosition(..., "macro risk-off → core in stable")`).
 
-  | preset | fear_greed | lunarcrush | santiment | finnhub_news | alpha_vantage_news | news |
-  |---|---|---|---|---|---|---|
-  | conservative | 0.55 | 0.15 | 0.10 | 0.10 | 0.10 | 0.0 |
-  | balanced | 0.40 | 0.20 | 0.15 | 0.15 | 0.10 | 0.0 |
-  | aggressive | 0.25 | 0.30 | 0.20 | 0.15 | 0.10 | 0.0 |
+Verificato in DB: SOL viene chiusa ad ogni ciclo dell'engine con `exit_reason = "macro risk-off → core in stable"`. Macro attuale = `risk-off` (BTC 62.640 < SMA200 77.008). Quindi:
 
-- Estendere `SENTIMENT_SOURCES` con le due nuove chiavi.
-- Aggiornare commento di testa: "Strategia v4 multi-asset (crypto core/satellite + stocks via xStocks + forex)".
-- Aggiornare `tagline`/`summary` dei preset: "Default v4" al posto di "Default v3".
+1. Engine tick → chiude SOL (sleeve=core, non in `core_weights`) → restano BTC+ETH = $252.
+2. Tu premi "Risincronizza da Kraken" (force=true) → cancella le posizioni paper aperte e reinserisce BTC+ETH+SOL = $306.
+3. Dopo 1-5 min l'engine ri-parte → richiude SOL → tornano $252.
 
-### B) Pagina Sentiment (`src/routes/_authenticated/sentiment.tsx`)
-- Aggiornare titolo/copy "v3" → "v4".
-- Aggiungere a `SOURCES`:
-  - `finnhub_news` — "Finnhub News & Earnings — segnali fondamentali su stocks/xStocks. Richiede `FINNHUB_API_KEY`."
-  - `alpha_vantage_news` — "Alpha Vantage News Sentiment — fallback fondamentali stocks/forex. Richiede `ALPHA_VANTAGE_API_KEY`."
-- Nuovo blocco **"Fonti dati di mercato"** (sopra il blocco Fonti sentiment):
-  - Riga **Kraken** — crypto prezzi + saldi (badge "configurato" se le secret esistono).
-  - Riga **Finnhub** — stocks/xStocks prezzi (badge ON/OFF).
-  - Riga **Alpha Vantage** — forex + fallback stocks (badge ON/OFF).
-  - Non sono toggle-abili (sono infrastruttura), solo stato.
+Stessa cosa accadrà a qualunque altra crypto presente su Kraken oltre a BTC/ETH (ADA, DOT, ecc.). E in realtà BTC/ETH stessi finiranno chiusi anche loro al prossimo tick risk-off (la sopravvivenza fin qui è stata fortuita perché il loop satellite/core ha pattern timing diversi).
 
-### C) Nuova server fn `getMarketDataStatus` in `src/lib/diagnostics.functions.ts`
-- Ritorna `{ kraken: boolean, finnhub: boolean, alphaVantage: boolean }` leggendo `process.env.KRAKEN_API_KEY`, `FINNHUB_API_KEY`, `ALPHA_VANTAGE_API_KEY` (solo boolean, mai i valori).
-- Usata dal nuovo blocco in Sentiment.
+## Fix proposto
 
-### D) Diagnostica (`src/routes/_authenticated/diagnostica.tsx`)
-- Titolo: "Diagnostica engine v4".
-- Sottotitolo aggiornato: "Regimi macro/meso, Core / Satellite / Bear-DCA, **multi-asset (crypto + stocks xStocks + forex)**, universo dinamico, fee Kraken reali".
-- Sezione **AI Supervisor**: aggiungere riga descrittiva "Strategia v4 multi-asset — alloca capitale per classe (vedi pesi `asset_class_split`) e governa i 3 flag operativi."
+### 1. `src/lib/portfolio.functions.ts` — `runSeedPaperFromKraken`
+Assegnare il sleeve corretto in base a `core_weights`:
 
-### E) Strategia (`src/routes/_authenticated/strategia.tsx`)
-- Tutte le occorrenze "Strategia v3" → "Strategia v4" (incluse description box, chart legend, KPI card, descrizione tab).
+```ts
+// Leggi core_weights dalle settings prima del loop
+const coreSymbols = new Set(Object.keys(settings?.core_weights ?? { BTC: 1, ETH: 1 }));
+// Nel loop:
+const sleeve = coreSymbols.has(sym) ? "core" : "satellite";
+```
 
-### F) Dashboard (`src/routes/_authenticated/dashboard.tsx`)
-- Stringa "(v3 Core-Led + Satellite + Bear-DCA)" → "(v4 multi-asset: Core-Led + Satellite + Bear-DCA + Stocks/Forex)".
+Così SOL importata da Kraken entra come `satellite`, non viene toccata dal core-switch macro, e il suo destino dipende solo da stop/take/trailing satellite (regole 7) — che essendo seed senza stop attivo restano aperte finché il prezzo non triggera stop loss.
 
-## File toccati
+### 2. (Opzionale, consigliato) Comportamento "core" sconosciuto nel trading-engine
 
-- `src/lib/strategy-presets.ts`
-- `src/lib/diagnostics.functions.ts` (+ nuova fn `getMarketDataStatus`)
-- `src/routes/_authenticated/sentiment.tsx`
-- `src/routes/_authenticated/diagnostica.tsx`
-- `src/routes/_authenticated/strategia.tsx`
-- `src/routes/_authenticated/dashboard.tsx`
+Nel ramo macro risk-off (riga 286), filtrare la chiusura ai soli asset che il bot riconosce come core:
 
-## Cosa NON cambio
+```ts
+for (const p of corePos.filter(p => coreAssets.includes(p.asset))) {
+  await closePosition(...);
+}
+```
 
-- Nessuna logica engine / DB / migration.
-- Nessuna modifica ai pesi `asset_class_split` o ai parametri di risk dei preset.
-- AI Supervisor logica decisionale invariata (solo copy testuale).
+Così anche se in futuro qualcosa marca per errore un asset come `core`, l'engine non lo liquida senza motivo. Le posizioni "core estranee" vengono lasciate gestire al ramo satellite/uscite o all'utente.
+
+### 3. Nota in `Composizione portafoglio`
+Aggiungere una piccola nota: "Le posizioni importate da Kraken diverse da BTC/ETH (core) vengono trattate come satellite e gestite con stop/trailing standard."
+
+## File modificati
+
+- `src/lib/portfolio.functions.ts` — sleeve corretto in `runSeedPaperFromKraken`.
+- `supabase/functions/trading-engine/index.ts` — chiusura core risk-off ristretta a `coreAssets`.
+- `src/components/dashboard/PortfolioPieChart.tsx` (o testo della card portfolio) — micro nota informativa.
+
+## Cosa NON viene toccato
+
+- Strategia v4, preset, pesi sentiment, schema DB, RLS.
+- Posizioni già chiuse storicamente (resta lo storico in `history`).
+
+## Domanda
+
+Applico tutti e 3 i punti? O preferisci solo il punto 1 (il fix minimo che risolve il sintomo della SOL che appare/scompare)?
