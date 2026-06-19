@@ -267,20 +267,35 @@ function DashboardPage() {
 function ChartView({ snapshots, timeframe }: { snapshots: { ts: string; total_value: number }[]; timeframe: Timeframe }) {
   const tf = TIMEFRAMES.find((t) => t.key === timeframe)!;
 
-  const { data, domain, ticks } = useMemo(() => {
+  const { data, domain, ticks, spanMs, coverage, baseline } = useMemo(() => {
     const now = Date.now();
-    const allPoints = snapshots.map((s) => ({ t: new Date(s.ts).getTime(), total_value: s.total_value }));
-    let start: number;
-    if (tf.ms === null) {
-      start = allPoints.length > 0 ? allPoints[0].t : now - 24 * 60 * 60 * 1000;
-    } else {
-      start = now - tf.ms;
+    const allPoints = snapshots
+      .map((s) => ({ t: new Date(s.ts).getTime(), total_value: s.total_value }))
+      .sort((a, b) => a.t - b.t);
+    if (allPoints.length === 0) {
+      return { data: [], domain: [now - 60_000, now] as [number, number], ticks: [] as number[], spanMs: 0, coverage: 1, baseline: null as number | null };
     }
+    const firstT = allPoints[0].t;
+    const requested = tf.ms ?? (now - firstT);
+    // Start no earlier than the first snapshot — avoids empty area on the left.
+    const start = Math.max(firstT, now - requested);
     const filtered = allPoints.filter((p) => p.t >= start);
-    const tickCount = 6;
-    const step = (now - start) / (tickCount - 1);
-    const ticks = Array.from({ length: tickCount }, (_, i) => Math.round(start + step * i));
-    return { data: filtered, domain: [start, now] as [number, number], ticks };
+    const effective = filtered.length > 0 ? filtered : allPoints.slice(-2);
+    const dStart = effective[0].t;
+    const dEnd = now;
+    const span = Math.max(1, dEnd - dStart);
+    const tickCount = Math.min(6, Math.max(2, effective.length));
+    const step = span / (tickCount - 1);
+    const ticksArr = Array.from({ length: tickCount }, (_, i) => Math.round(dStart + step * i));
+    const cov = tf.ms ? Math.min(1, (now - firstT) / tf.ms) : 1;
+    return {
+      data: effective,
+      domain: [dStart, dEnd] as [number, number],
+      ticks: ticksArr,
+      spanMs: span,
+      coverage: cov,
+      baseline: effective[0].total_value,
+    };
   }, [snapshots, tf.ms]);
 
   if (snapshots.length === 0) {
@@ -291,55 +306,80 @@ function ChartView({ snapshots, timeframe }: { snapshots: { ts: string; total_va
     );
   }
 
-  const showTime = timeframe === "1H" || timeframe === "1D";
-  const showYear = timeframe === "1Y" || timeframe === "ALL";
   const tickFmt = (v: number) => {
     const d = new Date(v);
-    if (showTime) return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-    if (showYear) return d.toLocaleDateString("it-IT", { month: "short", year: "numeric" });
-    return d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+    if (spanMs < 24 * 60 * 60 * 1000) return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    if (spanMs < 7 * 24 * 60 * 60 * 1000) return d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    if (spanMs < 365 * 24 * 60 * 60 * 1000) return d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+    return d.toLocaleDateString("it-IT", { month: "short", year: "numeric" });
+  };
+
+  const hours = Math.round(spanMs / (60 * 60 * 1000));
+  const formatSpan = () => {
+    if (hours < 1) return `${Math.max(1, Math.round(spanMs / 60000))} min`;
+    if (hours < 48) return `${hours}h`;
+    return `${Math.round(hours / 24)} giorni`;
   };
 
   return (
-    <div className="h-72 -ml-2">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
-          <defs>
-            <linearGradient id="pv" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.45} />
-              <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={domain}
-            ticks={ticks}
-            tickFormatter={tickFmt}
-            stroke="var(--color-muted-foreground)"
-            fontSize={11}
-          />
-          <YAxis
-            tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
-            stroke="var(--color-muted-foreground)"
-            fontSize={11}
-            width={56}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "var(--color-popover)",
-              border: "1px solid var(--color-border)",
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            labelFormatter={(v) => new Date(v as number).toLocaleString("it-IT")}
-            formatter={(v: number) => [formatUsd(v), "Totale"]}
-          />
-          <Area type="monotone" dataKey="total_value" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#pv)" />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="space-y-2">
+      {coverage < 0.1 && tf.ms && (
+        <div className="text-xs text-amber-500/80">
+          ⓘ Storico disponibile: {formatSpan()} — la finestra "{tf.label}" non è ancora popolata.
+        </div>
+      )}
+      <div className="h-72 -ml-2">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="pv" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.45} />
+                <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="t"
+              type="number"
+              scale="time"
+              domain={domain}
+              ticks={ticks}
+              tickFormatter={tickFmt}
+              stroke="var(--color-muted-foreground)"
+              fontSize={11}
+            />
+            <YAxis
+              tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
+              stroke="var(--color-muted-foreground)"
+              fontSize={11}
+              width={56}
+              domain={["auto", "auto"]}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--color-popover)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "var(--color-popover-foreground)",
+              }}
+              itemStyle={{ color: "var(--color-popover-foreground)" }}
+              labelStyle={{ color: "var(--color-popover-foreground)" }}
+              labelFormatter={(v) => new Date(v as number).toLocaleString("it-IT")}
+              formatter={(v: number) => [formatUsd(v), "Totale"]}
+            />
+            {baseline != null && (
+              <ReferenceLine
+                y={baseline}
+                stroke="var(--color-muted-foreground)"
+                strokeDasharray="2 4"
+                strokeOpacity={0.5}
+              />
+            )}
+            <Area type="monotone" dataKey="total_value" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#pv)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
