@@ -1,21 +1,32 @@
-Obiettivo: fermare l’errore ricorrente `Cannot read properties of undefined (reading 'toFixed')` e azzerare lo storico trade PAPER, ripartendo solo dalle posizioni/saldi aperti reali importati da Kraken.
+## Obiettivo
+Azzerare completamente lo stato del paper trading e ripartire da zero importando solo le posizioni reali attualmente aperte su Kraken, con un nuovo bilancio iniziale coerente.
 
-Piano:
-1. **Correzione trading-engine**
-   - Il crash avviene subito dopo una chiusura (`Chiuso ETH/BTC/SOL...`) perché `fmtClose()` riceve `portfolioTotal` non valorizzato e chiama `.toFixed()`.
-   - Aggiornerò `closePosition()` per passare sempre un totale portafoglio valido a `fmtClose()`.
-   - Renderò anche i formatter Telegram più robusti usando conversioni numeriche sicure, così un dato mancante non può più far saltare tutto il ciclo.
+## Azioni
 
-2. **Pulizia PAPER e reseed da Kraken**
-   - Eliminerò tutte le righe PAPER nella tabella `positions`, quindi spariranno trade aperti e chiusi generati finora.
-   - Eliminerò anche gli snapshot PAPER (`portfolio_snapshots`) e la diagnostica engine collegata, così la dashboard non mescola dati vecchi con il nuovo inizio.
-   - Reinizializzerò il PAPER da Kraken usando la logica esistente di seed, mantenendo solo le posizioni/saldi aperti effettivi importati da Kraken.
-   - Non toccherò dati LIVE, chiavi Kraken, impostazioni strategia o log storici non necessari.
+### 1. Pulizia dati PAPER nel database
+Cancellare tutte le righe in modalità `paper` da:
+- `positions` (sia aperte che chiuse — storico trade incluso)
+- `portfolio_snapshots` (storico equity)
+- `engine_diagnostics` (cicli engine)
+- `trade_fees` (commissioni)
+- `events_log` (eventi engine, solo paper)
+- `ai_proposals`, `ai_reports`, `ai_flag_changes` (solo paper)
+- `backtest_runs` non viene toccato (è altra cosa)
 
-3. **Allineamento dashboard**
-   - Dopo il reset, il dettaglio portafoglio PAPER leggerà solo le nuove posizioni aperte importate.
-   - La dashboard mostrerà il nuovo snapshot coerente con BTC/SOL/altre posizioni realmente presenti su Kraken, invece delle sole 2 posizioni rimaste dopo vecchie chiusure automatiche.
+Reset in `settings` (mode=paper):
+- `paper_seeded_at = NULL`
+- `paper_seed_total_usd = NULL`
+- `paper_seed_cash_usd = NULL`
+- `tax_reserve_cents = 0`, `loss_carryforward_cents = 0`
 
-4. **Deploy e verifica**
-   - Distribuirò la funzione `trading-engine` aggiornata.
-   - Controllerò i log/eventi dopo una chiamata di test per verificare che non venga più inviato l’errore `.toFixed` su Telegram.
+### 2. Risincronizzazione da Kraken
+- Al prossimo ciclo, l'engine rileva `paper_seeded_at = NULL` e ri-esegue il seed: legge il balance reale da Kraken (cash USD + holdings aperti) e popola `positions` solo con le posizioni effettivamente aperte adesso.
+- Il bilancio iniziale = valore totale del portafoglio Kraken al momento del seed (nessuno storico, equity parte da lì).
+
+### 3. Verifica
+- Dopo il reset, lancio un ciclo manuale dell'engine per innescare il seed.
+- Controllo che `positions` contenga solo le aperte reali e che `portfolio_snapshots` riparta da un singolo snapshot iniziale.
+
+## Note
+- Nessuna modifica a LIVE, Kraken keys, strategia, preset, o configurazione AI Supervisor.
+- Nessuna modifica al codice — è solo un'operazione di pulizia dati + riseed automatico.
