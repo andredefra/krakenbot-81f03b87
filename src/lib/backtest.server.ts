@@ -19,17 +19,21 @@ export type PresetParams = {
   regime_filter: "btc_sma50" | "btc_sma200" | "fg_only" | "off";
   core_pct: number;            // 0..1, quota allocata al core buy & hold
   core_assets: string[];       // simboli del core sleeve (es. BTC, ETH)
+  // v4 — disciplina trade satellite (mirror del trading-engine live)
+  monthly_trade_cap: number;   // max entries satellite per mese solare
+  cooldown_hours: number;      // ore dopo l'exit prima di poter riaprire lo stesso asset
+  min_target_pct: number;      // target minimo per coprire fee Kraken (entry guard)
 };
 
 export type BearDcaParams = {
   enabled: boolean;
-  ddTrigger: number;
-  intervalDays: number;
-  tranchePct: number;
-  maxPct: number;
-  ddWindow: number;
-  smaPeriod: number;
+  fgThreshold: number;         // F&G sotto cui si apre la tranche (deep fear)
+  intervalDays: number;        // distanza minima tra due tranche
+  tranchePct: number;          // % capitale totale per tranche
+  maxPct: number;              // tetto allocazione DCA in % del core
+  smaPeriod: number;           // SMA per definire il regime macro risk-off (default 200)
 };
+
 
 export type BacktestInput = {
   startCapital: number;
