@@ -1,60 +1,67 @@
-## Diagnosi
+## Cosa cambia
 
-Quando importi il saldo da Kraken (`seed_from_kraken` in `src/lib/portfolio.functions.ts`) **ogni asset viene inserito con `sleeve = "core"`**, incluso SOL.
+### A) Backtest allineato a Strategia v4 (engine puro)
 
-Il trading-engine (`supabase/functions/trading-engine/index.ts`) però considera "core" SOLO gli asset elencati in `core_weights` (default `{ BTC: 0.6, ETH: 0.4 }`). Tutte le altre posizioni con `sleeve='core'`:
+Oggi `runBacktest` (in `src/lib/backtest.server.ts`) riceve già i parametri Bear-DCA ma **non li usa**, e ignora `monthly_trade_cap`, `cooldown_hours` e `min_target_pct`. Il live engine (`supabase/functions/trading-engine/index.ts`) invece li applica. Risultato: il backtest stima un numero di trade superiore alla strategia reale e non simula la tranche di accumulo deep-fear.
 
-- non vengono mai rifornite/riequilibrate in macro risk-on,
-- vengono **chiuse tutte** nel ramo macro risk-off (riga 285-289: `for (const p of corePos) closePosition(..., "macro risk-off → core in stable")`).
+Aggiungo nel `runBacktest`:
 
-Verificato in DB: SOL viene chiusa ad ogni ciclo dell'engine con `exit_reason = "macro risk-off → core in stable"`. Macro attuale = `risk-off` (BTC 62.640 < SMA200 77.008). Quindi:
+1. **Bear-DCA passivo crypto-only**
+   - Quando `bearDca.enabled` e regime macro = risk-off (BTC < SMA200) **e** F&G < `bearDca.fgThreshold` (oggi cablato a 22, lo espongo nei `BearDcaParams`) → apre una tranche BTC pari a `tranchePct%` del capitale, rispettando `intervalDays` tra tranche e `maxPct%` del core come tetto.
+   - Quando macro torna risk-on → chiude tutte le tranche DCA (release).
+   - Tranche e fee calcolate come per le posizioni satellite.
 
-1. Engine tick → chiude SOL (sleeve=core, non in `core_weights`) → restano BTC+ETH = $252.
-2. Tu premi "Risincronizza da Kraken" (force=true) → cancella le posizioni paper aperte e reinserisce BTC+ETH+SOL = $306.
-3. Dopo 1-5 min l'engine ri-parte → richiude SOL → tornano $252.
+2. **Disciplina trade satellite**
+   - `monthly_trade_cap`: conta i satellite aperti nel mese solare in corso; salta nuove aperture quando raggiunto.
+   - `cooldown_hours`: salta riaperture sullo stesso asset entro la finestra (basata sulla data dell'ultima chiusura).
+   - `min_target_pct`: pre-check ingresso — se `take_profit_pct < min_target_pct + fee_round_trip` salta l'asset (come fa il live engine).
 
-Stessa cosa accadrà a qualunque altra crypto presente su Kraken oltre a BTC/ETH (ADA, DOT, ecc.). E in realtà BTC/ETH stessi finiranno chiusi anche loro al prossimo tick risk-off (la sopravvivenza fin qui è stata fortuita perché il loop satellite/core ha pattern timing diversi).
+3. **Pass-through dei parametri preset**
+   - `backtest.functions.ts` passa `monthly_trade_cap`, `cooldown_hours`, `min_target_pct` dentro `PresetParams` e legge `bear_dca_fg_threshold` da `settings` per popolare `bearDca.fgThreshold`.
 
-## Fix proposto
+4. **Cache invalidation**
+   - Bump `hashInput` da `v6|...` a `v7|...` per invalidare le cache backtest esistenti (le vecchie non simulavano queste regole).
 
-### 1. `src/lib/portfolio.functions.ts` — `runSeedPaperFromKraken`
-Assegnare il sleeve corretto in base a `core_weights`:
+### B) Allineamento copy v3 → v4 ancora presenti
 
-```ts
-// Leggi core_weights dalle settings prima del loop
-const coreSymbols = new Set(Object.keys(settings?.core_weights ?? { BTC: 1, ETH: 1 }));
-// Nel loop:
-const sleeve = coreSymbols.has(sym) ? "core" : "satellite";
-```
+- `src/routes/_authenticated/settings.tsx`
+  - Sottotitolo: "Parametri della Strategia v3 (Core-Led 70/30...)" → "Parametri della **Strategia v4 multi-asset** (Core-Led 70/30 default Bilanciato, fee Kraken reali, Bear-DCA opzionale)".
+  - Card "Commissioni reali Kraken (v3 — usate anche dal backtest)" → "(v4 — usate anche dal backtest)".
+  - Card Timeframe: "v3 raccomandato" → "v4 raccomandato".
+  - Toast riallineamento: "tornare al default v2" → "tornare al default v4".
 
-Così SOL importata da Kraken entra come `satellite`, non viene toccata dal core-switch macro, e il suo destino dipende solo da stop/take/trailing satellite (regole 7) — che essendo seed senza stop attivo restano aperte finché il prezzo non triggera stop loss.
+- `src/lib/strategy.functions.ts`
+  - Event log "Preset v2 applicato: ..." → "Preset v4 applicato: ...".
 
-### 2. (Opzionale, consigliato) Comportamento "core" sconosciuto nel trading-engine
+- `src/routes/_authenticated/strategia.tsx`
+  - Toast "Preset v2 applicato — parametri e pesi sentiment aggiornati" → "Preset v4 applicato — parametri, allocazione asset class e pesi sentiment aggiornati".
 
-Nel ramo macro risk-off (riga 286), filtrare la chiusura ai soli asset che il bot riconosce come core:
+### C) Visibilità del legame Preset → pesi sentiment
 
-```ts
-for (const p of corePos.filter(p => coreAssets.includes(p.asset))) {
-  await closePosition(...);
-}
-```
+Il meccanismo esiste già: `applyStrategyPreset` chiama `deriveSentimentWeights(presetId, enabled)` e scrive `sentiment_weights` nelle settings. Manca solo la conferma visiva.
 
-Così anche se in futuro qualcosa marca per errore un asset come `core`, l'engine non lo liquida senza motivo. Le posizioni "core estranee" vengono lasciate gestire al ramo satellite/uscite o all'utente.
+- In ogni **PresetCard** (`strategia.tsx`) aggiungo una mini-riga "Sentiment" con i 3 pesi base più alti per quel preset (es. Aggressivo → "LunarCrush 30% · F&G 25% · Santiment 20%"). Calcolata da `SENTIMENT_BASE` (richiede di esportarla da `strategy-presets.ts`).
+- Nella pagina **Sentiment** (`sentiment.tsx`), nel box "Perché i pesi non sono editabili?", aggiungo un piccolo riepilogo "Preset attivo: **Aggressivo** → profilo pesi base derivato qui sotto".
 
-### 3. Nota in `Composizione portafoglio`
-Aggiungere una piccola nota: "Le posizioni importate da Kraken diverse da BTC/ETH (core) vengono trattate come satellite e gestite con stop/trailing standard."
+Nessuna modifica alla logica: solo trasparenza.
 
 ## File modificati
 
-- `src/lib/portfolio.functions.ts` — sleeve corretto in `runSeedPaperFromKraken`.
-- `supabase/functions/trading-engine/index.ts` — chiusura core risk-off ristretta a `coreAssets`.
-- `src/components/dashboard/PortfolioPieChart.tsx` (o testo della card portfolio) — micro nota informativa.
+- `src/lib/backtest.server.ts` — Bear-DCA, monthly_cap, cooldown, min_target nel motore puro.
+- `src/lib/backtest.functions.ts` — pass-through nuovi parametri + bump hash a `v7`.
+- `src/lib/strategy-presets.ts` — export `SENTIMENT_BASE` (sola visibilità).
+- `src/lib/strategy.functions.ts` — testo log v4.
+- `src/routes/_authenticated/settings.tsx` — copy v3→v4.
+- `src/routes/_authenticated/strategia.tsx` — riga sentiment in PresetCard + toast v4.
+- `src/routes/_authenticated/sentiment.tsx` — riga "preset attivo" nel box informativo.
 
-## Cosa NON viene toccato
+## Cosa NON cambia
 
-- Strategia v4, preset, pesi sentiment, schema DB, RLS.
-- Posizioni già chiuse storicamente (resta lo storico in `history`).
+- Universo backtest (resta crypto: BTC/ETH core + alt satellite). Il GO LIVE è già crypto-only su Kraken; stocks/forex restano paper-only e fuori dal backtest finché non integriamo un broker.
+- Schema DB, RLS, migrations.
+- Logica del trading-engine live (già v4 compatibile).
+- Mapping `deriveSentimentWeights` (già preset-driven).
 
 ## Domanda
 
-Applico tutti e 3 i punti? O preferisci solo il punto 1 (il fix minimo che risolve il sintomo della SOL che appare/scompare)?
+Procedo con tutto il pacchetto, oppure preferisci splittare e iniziare solo dal punto **A) backtest** (impatto funzionale maggiore) lasciando i punti B (copy) e C (visibilità sentiment) per dopo?

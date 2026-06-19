@@ -128,6 +128,9 @@ export async function runOosValidation(args: {
       regime_filter: "btc_sma200",
       core_pct: corePct,
       core_assets: CORE_ASSETS,
+      monthly_trade_cap: Number(s.monthly_trade_cap ?? 6),
+      cooldown_hours: Number(s.cooldown_hours ?? 48),
+      min_target_pct: Number(s.min_target_pct ?? 5),
     },
     btc: ohlcByS["BTC"],
     spx: ohlcByS["SPX"] ?? [],
@@ -137,14 +140,14 @@ export async function runOosValidation(args: {
     slippagePct,
     bearDca: {
       enabled: Boolean(s.bear_dca_enabled ?? true),
-      ddTrigger: 0.25,
+      fgThreshold: Number(s.bear_dca_fg_threshold ?? 22),
       intervalDays: Number(s.bear_dca_interval_days ?? 14),
       tranchePct: Number(s.bear_dca_tranche_pct ?? 5),
       maxPct: Number(s.bear_dca_cap_pct ?? 30),
-      ddWindow: 90,
       smaPeriod: 200,
     },
   });
+
 
   // DCA settimanale: totale = startCapital, tranche = capital / numero settimane
   const weeks = Math.max(1, Math.floor(ohlcByS["BTC"].length / 7));

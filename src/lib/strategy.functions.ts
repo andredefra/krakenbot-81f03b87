@@ -1,4 +1,4 @@
-// Server functions for strategy preset management — allineato a STRATEGIA v2.
+// Server functions for strategy preset management — allineato a STRATEGIA v4.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -68,7 +68,7 @@ export const applyStrategyPreset = createServerFn({ method: "POST" })
       user_id: context.userId,
       level: "info",
       component: "strategy",
-      message: `Preset v2 applicato: ${preset.name}`,
+      message: `Preset v4 applicato: ${preset.name}`,
     });
     return { ok: true, preset: preset.id };
   });

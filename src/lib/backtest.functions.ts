@@ -96,7 +96,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Load user-specific fees + bear-DCA params from settings (v3)
+    // Load user-specific fees + bear-DCA params from settings (v4)
     const settingsRes = await supabase
       .from("settings")
       .select("maker_fee_pct, taker_fee_pct, slippage_pct, bear_dca_enabled, bear_dca_fg_threshold, bear_dca_cap_pct, bear_dca_tranche_pct, bear_dca_interval_days")
@@ -109,8 +109,10 @@ export const runBacktestFn = createServerFn({ method: "POST" })
     const bearCapPct = Number(s.bear_dca_cap_pct ?? 30);
     const bearTranchePct = Number(s.bear_dca_tranche_pct ?? 5);
     const bearIntervalDays = Number(s.bear_dca_interval_days ?? 14);
+    const bearFgThreshold = Number(s.bear_dca_fg_threshold ?? 22);
 
-    const input_hash = `${hashInput(data)}|fee${feePct}|slip${slippagePct}|bd${bearEnabled ? 1 : 0}|${bearCapPct}/${bearTranchePct}/${bearIntervalDays}`;
+    const input_hash = `v7|${hashInput(data)}|fee${feePct}|slip${slippagePct}|bd${bearEnabled ? 1 : 0}|${bearCapPct}/${bearTranchePct}/${bearIntervalDays}/${bearFgThreshold}`;
+
 
     // Check cache
     const cached = await supabase
@@ -174,6 +176,9 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         regime_filter: "btc_sma200",
         core_pct: presetMeta.values.core_satellite_split.core,
         core_assets: CORE_ASSETS,
+        monthly_trade_cap: presetMeta.values.monthly_trade_cap,
+        cooldown_hours: presetMeta.values.cooldown_hours,
+        min_target_pct: presetMeta.values.min_target_pct,
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
@@ -183,14 +188,14 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       slippagePct,
       bearDca: {
         enabled: bearEnabled,
-        ddTrigger: 0.25,
+        fgThreshold: bearFgThreshold,
         intervalDays: bearIntervalDays,
         tranchePct: bearTranchePct,
         maxPct: bearCapPct,
-        ddWindow: 90,
         smaPeriod: 200,
       },
     });
+
 
     const step = Math.max(1, Math.floor(result.equity.length / 250));
     const downEq = result.equity.filter((_, i) => i % step === 0 || i === result.equity.length - 1);

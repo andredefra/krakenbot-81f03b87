@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { PRESETS, type PresetId, type StrategyPreset } from "@/lib/strategy-presets";
+import { PRESETS, SENTIMENT_BASE, type PresetId, type StrategyPreset } from "@/lib/strategy-presets";
 import { applyStrategyPreset } from "@/lib/strategy.functions";
 import { runBacktestFn } from "@/lib/backtest.functions";
 
@@ -48,7 +48,7 @@ function StrategiaPage() {
   const applyMut = useMutation({
     mutationFn: (preset: PresetId) => apply({ data: { preset: preset as "conservative" | "balanced" | "aggressive" } }),
     onSuccess: () => {
-      toast.success("Preset v2 applicato — parametri e pesi sentiment aggiornati");
+      toast.success("Preset v4 applicato — parametri, allocazione asset class e pesi sentiment aggiornati");
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Errore"),
@@ -148,6 +148,8 @@ function PresetCard({ preset, current, onApply }: { preset: StrategyPreset; curr
           <Badge variant="outline">Varianza {preset.variance}</Badge>
           <Badge variant="outline">F&amp;G ≤ {v.fg_greed_cap}</Badge>
         </div>
+        <SentimentMix presetId={preset.id} />
+
         <Button onClick={onApply} disabled={current} className="w-full" variant={current ? "outline" : "default"}>
           {current ? "Già attivo" : "Applica preset"}
         </Button>
@@ -217,6 +219,35 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+const SENTIMENT_LABELS: Record<string, string> = {
+  fear_greed: "F&G",
+  lunarcrush: "LunarCrush",
+  santiment: "Santiment",
+  finnhub_news: "Finnhub",
+  alpha_vantage_news: "Alpha Vantage",
+  news: "News",
+};
+
+function SentimentMix({ presetId }: { presetId: PresetId }) {
+  if (presetId === "custom") return null;
+  const base = SENTIMENT_BASE[presetId];
+  const top = Object.entries(base)
+    .filter(([, w]) => w > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+  return (
+    <div className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+      <span className="font-medium text-foreground">Sentiment base:</span>{" "}
+      {top.map(([k, w], i) => (
+        <span key={k} className="tabular-nums">
+          {SENTIMENT_LABELS[k] ?? k} {Math.round(w * 100)}%{i < top.length - 1 ? " · " : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 
 function DiffTable({ current, preset }: { current: Record<string, unknown>; preset: StrategyPreset }) {
   const v = preset.values!;

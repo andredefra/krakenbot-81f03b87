@@ -70,7 +70,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    title: "Commissioni reali Kraken (v3 — usate anche dal backtest)",
+    title: "Commissioni reali Kraken (v4 — usate anche dal backtest)",
     fields: [
       { key: "maker_fee_pct", label: "Maker fee", suffix: "%", help: "Default Kraken Pro: 0.25%" },
       { key: "taker_fee_pct", label: "Taker fee", suffix: "%", help: "Default Kraken Pro: 0.40% — il backtest USA questi valori" },
@@ -171,7 +171,7 @@ function SettingsPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Impostazioni rischio</h1>
-        <p className="text-sm text-muted-foreground">Parametri della Strategia v3 (Core-Led 70/30, fee Kraken reali, Bear-DCA opzionale). Modificabili in qualsiasi momento.</p>
+        <p className="text-sm text-muted-foreground">Parametri della <strong>Strategia v4 multi-asset</strong> (Core-Led 70/30 default Bilanciato, fee Kraken reali, Bear-DCA opzionale). Modificabili in qualsiasi momento.</p>
       </div>
 
       {q.data && (
@@ -189,7 +189,7 @@ function SettingsPage() {
                       <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-500">valori modificati</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      I valori salvati non corrispondono più al preset {storedPreset!.name}. Riallineali per tornare al default v2.
+                      I valori salvati non corrispondono più al preset {storedPreset!.name}. Riallineali per tornare al default v4.
                     </div>
                   </>
                 ) : (
@@ -283,7 +283,7 @@ function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Timeframe</CardTitle>
-              <CardDescription>v3 raccomandato: 4h o daily (meno rumore, meno fee).</CardDescription>
+              <CardDescription>v4 raccomandato: 4h o daily (meno rumore, meno fee).</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-w-xs space-y-1.5">
