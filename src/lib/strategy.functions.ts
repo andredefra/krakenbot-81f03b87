@@ -1,4 +1,4 @@
-// Server functions for strategy preset management — allineato a STRATEGIA v2.
+// Server functions for strategy preset management — allineato a STRATEGIA v4.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
