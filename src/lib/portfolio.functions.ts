@@ -123,16 +123,23 @@ async function priceMapForCrypto(symbols: string[]): Promise<Record<string, numb
 }
 
 export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: string) {
-  const [balanceEx, openOrders, openPositions] = await Promise.allSettled([
-    fetchKrakenBalanceEx(apiKey, apiSecret),
-    fetchKrakenOpenOrders(apiKey, apiSecret),
-    fetchKrakenOpenPositions(apiKey, apiSecret),
-  ]);
-
-  if (balanceEx.status === "rejected") throw balanceEx.reason;
+  const balanceEx = await fetchKrakenBalanceEx(apiKey, apiSecret);
+  const warnings: string[] = [];
+  let openOrders: Awaited<ReturnType<typeof fetchKrakenOpenOrders>> = { open: {} };
+  let openPositions: Awaited<ReturnType<typeof fetchKrakenOpenPositions>> = {};
+  try {
+    openOrders = await fetchKrakenOpenOrders(apiKey, apiSecret);
+  } catch (e) {
+    warnings.push(`OpenOrders non disponibile: ${krakenErrorDto(e).message}`);
+  }
+  try {
+    openPositions = await fetchKrakenOpenPositions(apiKey, apiSecret);
+  } catch (e) {
+    warnings.push(`OpenPositions non disponibile: ${krakenErrorDto(e).message}`);
+  }
 
   const aggregated: Record<string, number> = {};
-  for (const [rawAsset, entry] of Object.entries(balanceEx.value)) {
+  for (const [rawAsset, entry] of Object.entries(balanceEx)) {
     const qty = Number(entry.balance ?? 0);
     if (!Number.isFinite(qty) || qty === 0) continue;
     const sym = normalizeKrakenAsset(rawAsset);
@@ -142,8 +149,6 @@ export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: strin
   const symbols = Object.keys(aggregated);
   const cryptoSymbols = symbols.filter((s) => classifyAsset(s) === "crypto");
   const prices = await priceMapForCrypto(cryptoSymbols);
-  const warnings: string[] = [];
-
   for (const sym of symbols.filter((s) => classifyAsset(s) === "stocks")) {
     const base = xStockBaseSymbol(sym);
     if (!base) continue;
@@ -152,13 +157,10 @@ export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: strin
     else warnings.push(`Prezzo Finnhub non trovato per xStock ${sym}.`);
   }
 
-  if (openOrders.status === "rejected") warnings.push(`OpenOrders non disponibile: ${krakenErrorDto(openOrders.reason).message}`);
-  if (openPositions.status === "rejected") warnings.push(`OpenPositions non disponibile: ${krakenErrorDto(openPositions.reason).message}`);
-
   return {
     balances: aggregated,
-    openOrders: openOrders.status === "fulfilled" ? openOrders.value.open : {},
-    openPositions: openPositions.status === "fulfilled" ? openPositions.value : {},
+    openOrders: openOrders.open,
+    openPositions,
     prices,
     warnings,
   };
