@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatUsd, formatPct, pnlClass } from "@/lib/format";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TrendingUp, TrendingDown, Compass, Activity, Gauge, AlertCircle, RefreshCw } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 import { getDiagnostics } from "@/lib/diagnostics.functions";
