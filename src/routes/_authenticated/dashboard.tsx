@@ -11,6 +11,8 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { TrendingUp, TrendingDown, Compass, Activity, Gauge, AlertCircle } from "lucide-react";
 import { useActiveMode } from "@/hooks/use-active-mode";
 import { getDiagnostics } from "@/lib/diagnostics.functions";
+import { getLivePortfolio } from "@/lib/portfolio.functions";
+import { PortfolioPieChart } from "@/components/dashboard/PortfolioPieChart";
 
 type Timeframe = "1H" | "1D" | "1M" | "3M" | "1Y" | "ALL";
 const TIMEFRAMES: { key: Timeframe; label: string; ms: number | null }[] = [
@@ -62,6 +64,13 @@ function DashboardPage() {
   const diagQuery = useQuery({
     queryKey: ["diagnostics", "dashboard"],
     queryFn: () => fetchDiag(),
+    refetchInterval: 60_000,
+  });
+
+  const fetchPortfolio = useServerFn(getLivePortfolio);
+  const portfolioQuery = useQuery({
+    queryKey: ["live-portfolio", mode],
+    queryFn: () => fetchPortfolio(),
     refetchInterval: 60_000,
   });
 
