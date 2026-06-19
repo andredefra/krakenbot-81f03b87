@@ -107,8 +107,13 @@ const COMMODITY = new Set(["PAXG", "XAUT", "XAGT"]);
 const FUTURES_TOKENS = new Set(["ES", "ESX", "NQ", "RTY", "CL"]);
 const XSTOCK_BASES = ["AAPL", "AMZN", "COIN", "GOOGL", "META", "MSFT", "MSTR", "NVDA", "SPY", "TSLA", "QQQ", "IWM", "EFA", "EEM", "ARKK"];
 
+function normalizeAsset(asset: string): string {
+  const map: Record<string, string> = { XBT: "BTC", XXBT: "BTC", XDG: "DOGE", XXDG: "DOGE", ZEUR: "EUR", ZUSD: "USD" };
+  return map[asset] ?? asset;
+}
+
 function classifyAsset(asset: string): AssetClass {
-  const clean = asset.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  const clean = normalizeAsset(asset).replace(/[^A-Z0-9]/gi, "").toUpperCase();
   if (FIAT_FOREX.has(clean) || /^[A-Z]{6}$/.test(clean) && /USD|EUR|GBP|JPY|CHF|CAD|AUD/.test(clean)) return "forex";
   if (COMMODITY.has(clean)) return "forex";
   if (FUTURES_TOKENS.has(clean)) return "futures";
