@@ -1,7 +1,7 @@
 // Server functions per portfolio LIVE/PAPER.
 // - getLivePortfolio: composizione + equity. In live va su Kraken Balance + Ticker.
 //   In paper usa positions aperte + cash dell'ultimo snapshot. NIENTE dati finti.
-// - testKrakenConnection: chiamata leggera autenticata a /0/private/Balance per
+// - testKrakenConnection: chiamata leggera autenticata a /0/private/BalanceEx per
 //   verificare key/secret/permessi nella pagina Diagnostica.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -339,14 +339,14 @@ export const testKrakenConnection = createServerFn({ method: "POST" })
     const apiSecret = process.env.KRAKEN_API_SECRET;
     const startedAt = new Date().toISOString();
     try {
-      const balance = await fetchKrakenBalance(apiKey ?? "", apiSecret ?? "");
-      const nonZero = Object.entries(balance).filter(([, v]) => Number(v) > 0);
+      const balance = await fetchKrakenBalanceEx(apiKey ?? "", apiSecret ?? "");
+      const nonZero = Object.entries(balance).filter(([, v]) => Number(v.balance) > 0);
       return {
         ok: true as const,
         startedAt,
         finishedAt: new Date().toISOString(),
         assetsWithBalance: nonZero.length,
-        sampleAssets: nonZero.slice(0, 5).map(([k, v]) => ({ asset: normalizeKrakenAsset(k), qty: Number(v) })),
+        sampleAssets: nonZero.slice(0, 5).map(([k, v]) => ({ asset: normalizeKrakenAsset(k), qty: Number(v.balance) })),
       };
     } catch (e) {
       if (e instanceof KrakenApiError) {
