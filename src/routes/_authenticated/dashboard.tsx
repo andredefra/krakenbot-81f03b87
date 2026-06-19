@@ -252,11 +252,14 @@ function DashboardPage() {
         </CardContent>
       </Card>
 
+      <PortfolioSourceBanner mode={mode} onReseeded={() => portfolioQuery.refetch()} />
+
       <PortfolioPieChart
         data={portfolioQuery.data}
         loading={portfolioQuery.isLoading}
         onRefresh={() => portfolioQuery.refetch()}
       />
+
     </div>
   );
 }
