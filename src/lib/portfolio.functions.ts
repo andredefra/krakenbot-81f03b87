@@ -159,7 +159,7 @@ export async function loadLivePortfolioSnapshot(apiKey: string, apiSecret: strin
 
   return {
     balances: aggregated,
-    openOrders: openOrders.open,
+    openOrders: openOrders.open ?? {},
     openPositions,
     prices,
     warnings,
