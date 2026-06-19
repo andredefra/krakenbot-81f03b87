@@ -90,6 +90,14 @@ export type DiagnosticsPayload = {
   lastEngineAt: string | null;
 };
 
+export const getMarketDataStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => ({
+    kraken: Boolean(process.env.KRAKEN_API_KEY && process.env.KRAKEN_API_SECRET),
+    finnhub: Boolean(process.env.FINNHUB_API_KEY),
+    alphaVantage: Boolean(process.env.ALPHA_VANTAGE_API_KEY),
+  }));
+
 export const getDiagnostics = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<DiagnosticsPayload> => {
