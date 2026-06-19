@@ -176,6 +176,9 @@ export const runBacktestFn = createServerFn({ method: "POST" })
         regime_filter: "btc_sma200",
         core_pct: presetMeta.values.core_satellite_split.core,
         core_assets: CORE_ASSETS,
+        monthly_trade_cap: presetMeta.values.monthly_trade_cap,
+        cooldown_hours: presetMeta.values.cooldown_hours,
+        min_target_pct: presetMeta.values.min_target_pct,
       },
       btc: bySym["BTC"],
       spx: bySym["SPX"] ?? [],
@@ -185,14 +188,14 @@ export const runBacktestFn = createServerFn({ method: "POST" })
       slippagePct,
       bearDca: {
         enabled: bearEnabled,
-        ddTrigger: 0.25,
+        fgThreshold: bearFgThreshold,
         intervalDays: bearIntervalDays,
         tranchePct: bearTranchePct,
         maxPct: bearCapPct,
-        ddWindow: 90,
         smaPeriod: 200,
       },
     });
+
 
     const step = Math.max(1, Math.floor(result.equity.length / 250));
     const downEq = result.equity.filter((_, i) => i % step === 0 || i === result.equity.length - 1);
