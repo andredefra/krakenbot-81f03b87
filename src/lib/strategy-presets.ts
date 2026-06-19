@@ -1,7 +1,8 @@
-// Client-safe strategy presets — v3 Core-Led (vedi STRATEGIA.md v3).
-// v3: 70/30 di default, satellite più severo (max 2 pos, target +5%, ≤6 trade/mese,
-// cooldown 48h), Bear-DCA opzionale, igiene universo, fee reali Kraken usate sia
-// dall'engine che dal backtest.
+// Client-safe strategy presets — v4 multi-asset (crypto core/satellite + stocks
+// via xStocks + forex). Vedi STRATEGIA.md.
+// v4 mantiene il motore v3 Core-Led + Bear-DCA su crypto e aggiunge ripartizione
+// per classe d'asset (asset_class_split) e nuove fonti di sentiment fondamentale
+// (Finnhub news, Alpha Vantage news) per stocks/forex.
 
 export type PresetId = "conservative" | "balanced" | "aggressive" | "custom";
 
