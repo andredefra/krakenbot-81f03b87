@@ -70,7 +70,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    title: "Commissioni reali Kraken (v3 — usate anche dal backtest)",
+    title: "Commissioni reali Kraken (v4 — usate anche dal backtest)",
     fields: [
       { key: "maker_fee_pct", label: "Maker fee", suffix: "%", help: "Default Kraken Pro: 0.25%" },
       { key: "taker_fee_pct", label: "Taker fee", suffix: "%", help: "Default Kraken Pro: 0.40% — il backtest USA questi valori" },
