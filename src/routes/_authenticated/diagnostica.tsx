@@ -205,7 +205,7 @@ function Diag({ data }: { data: DiagnosticsPayload }) {
                 <Sparkles className="size-5 text-primary" /> AI Supervisor
               </CardTitle>
               <CardDescription>
-                Decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
+                Strategia v4 multi-asset (crypto + stocks xStocks + forex) — alloca capitale per classe d'asset e decide ogni ora i 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity) in base al preset attivo + condizioni di mercato.
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-1">
