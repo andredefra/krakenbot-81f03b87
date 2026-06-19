@@ -1,23 +1,21 @@
-## Problema
+## Obiettivo
 
-L'errore `positions_sleeve_check` blocca il seed PAPER perché in `runSeedPaperFromKraken` ho usato `sleeve: "seed"`, ma la tabella `positions` accetta solo `'core' | 'satellite' | 'dca'`.
+Vedere il dettaglio dei singoli crypto (BTC, ETH, SOL, …) senza dover cliccare lo spicchio "Crypto" per fare drill-down.
 
-## Fix
+## Modifica
 
-In `src/lib/portfolio.functions.ts` → `runSeedPaperFromKraken`:
+`src/components/dashboard/PortfolioPieChart.tsx`: sotto il pie chart (sempre visibile, sia in vista generale che in drill-down) aggiungo una tabella **"Dettaglio asset"** che elenca tutti i singoli asset di tutte le classi:
 
-- Sostituire `sleeve: "seed"` con `sleeve: "core"` per ogni riga inserita. Le posizioni importate da Kraken rappresentano il capitale di partenza, quindi "core" è la sleeve corretta.
-- Lasciare `open_reason: "seed_from_kraken"` come marcatore tracciabile (campo libero).
+| Asset | Classe | Quantità | Prezzo USD | Valore USD | % |
+|---|---|---|---|---|---|
 
-## Verifica
+- Ordinata per valore decrescente.
+- Mostra ogni asset reale presente su Kraken (BTC, ETH, SOL, USDC, xStocks, ecc.) — non più solo "Crypto: 5 asset".
+- Click su una riga → drill-down sulla sua asset class nel pie (riusa `setDrillClass`).
+- Resta il pie chart attuale per la vista per asset class (con drill-down su click), così non perdi la visione aggregata.
 
-Dopo la fix, clic su "Risincronizza da Kraken" sulla dashboard deve:
-1. Inserire le posizioni reali Kraken come `sleeve='core'`, `mode='paper'`.
-2. Aggiornare `settings.paper_seeded_at` e i totali.
-3. La card "Valore portafoglio (PAPER)" mostra il totale reale, non più "Errore".
+Nessuna modifica server / DB / tipi. Solo presentazione frontend.
 
 ## File toccati
 
-- `src/lib/portfolio.functions.ts` (1 riga)
-
-Nessuna migration necessaria.
+- `src/components/dashboard/PortfolioPieChart.tsx`
