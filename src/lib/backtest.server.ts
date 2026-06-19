@@ -1,6 +1,8 @@
-// Pure backtest engine v3. Deterministic, no I/O — accepts pre-loaded OHLC + F&G arrays
+// Pure backtest engine v4. Deterministic, no I/O — accepts pre-loaded OHLC + F&G arrays
 // and returns equity curves + KPIs for: strategy, BTC buy&hold, S&P 500.
-// GO LIVE gate compares strategy vs BTC Buy & Hold (benchmark passivo standard).
+// v4: include Bear-DCA, monthly_trade_cap, cooldown_hours e min_target_pct
+// in linea con il trading-engine live. GO LIVE gate vs BTC Buy & Hold.
+
 
 export type Candle = { date: string; close: number };
 export type FgPoint = { date: string; value: number };
