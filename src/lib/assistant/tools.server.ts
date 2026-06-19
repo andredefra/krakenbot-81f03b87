@@ -159,7 +159,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getDiagnostics: tool({
-      description: "Stato completo dell'engine v3: regime macro/meso, sleeve Core (holdings + target), conteggio satellite, stato Bear-DCA (attivo/deployato/cap), universe eligible, fee totali pagate, flag Core-Only/Bear-DCA/filtro fiat.",
+      description: "Stato completo dell'engine v4: regime macro/meso, sleeve Core (holdings + target), conteggio satellite multi-asset Kraken, stato Bear-DCA, universo eligible, fee totali pagate e flag Core-Only/Bear-DCA/include multi-asset.",
       inputSchema: z.object({}),
       execute: async () => {
         const [diagRes, settingsRes, openRes, feesRes] = await Promise.all([
@@ -179,7 +179,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getLatestBacktest: tool({
-      description: "Ultimo backtest v3 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC Buy & Hold su Sharpe e Max DD).",
+      description: "Ultimo backtest v4 con metriche (Sharpe, Sortino, Profit Factor, max DD) e verdetto GO LIVE gate (PF>1.3, Sharpe>0.8, batte BTC Buy & Hold su Sharpe e Max DD).",
       inputSchema: z.object({}),
       execute: async () => {
         const { data, error } = await supabase
@@ -195,7 +195,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getAiSupervisorState: tool({
-      description: "Stato dell'AI Supervisor: ultima decisione sui 3 flag strategici (core_only_mode, bear_dca_enabled, exclude_fiat_commodity), motivazione, confidenza, timestamp. Inoltre ultimi eventi 'ai-supervisor' dal log.",
+      description: "Stato dell'AI Supervisor: ultima decisione sui flag strategici. Nota: exclude_fiat_commodity deve restare OFF per includere token azionari/xStocks, forex e commodity Kraken. Include motivazione, confidenza, timestamp ed eventi recenti.",
       inputSchema: z.object({}),
       execute: async () => {
         const [settingsRes, eventsRes] = await Promise.all([
@@ -233,8 +233,8 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         daily_loss_limit_pct: z.number().min(0.1).max(50).optional(),
         monthly_trade_cap: z.number().int().min(1).max(50).optional(),
         timeframe: z.enum(["15m", "30m", "1h", "2h", "4h", "1d"]).optional(),
-        // v3 — Bear-DCA tuning (i 3 flag core_only/bear_dca_enabled/exclude_fiat
-        // sono gestiti dall'AI Supervisor: NON esporli qui)
+        // v4 — Bear-DCA tuning. core_only/bear_dca_enabled sono gestiti
+        // dall'AI Supervisor; exclude_fiat_commodity resta OFF per multi-asset.
         bear_dca_fg_threshold: z.number().int().min(0).max(50).optional(),
         bear_dca_cap_pct: z.number().min(0).max(100).optional(),
         bear_dca_tranche_pct: z.number().min(0.1).max(50).optional(),

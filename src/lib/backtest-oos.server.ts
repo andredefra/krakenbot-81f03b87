@@ -4,7 +4,9 @@
 // e BTC DCA settimanale.
 import { runBacktest, type Kpis } from "./backtest.server";
 
-const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC"];
+// Universo OOS v4: include SPX come proxy storico per token azionari/xStocks
+// Kraken quando lo storico specifico non è ancora popolato.
+const FULL_UNIVERSE = ["ETH", "SOL", "ADA", "LINK", "AVAX", "DOT", "XRP", "LTC", "SPX"];
 const CORE_ASSETS = ["BTC", "ETH"];
 const PAGE_SIZE = 1000;
 
@@ -100,7 +102,7 @@ export async function runOosValidation(args: {
   const toStr = to.toISOString().slice(0, 10);
   const fromStr = from.toISOString().slice(0, 10);
 
-  const allSyms = ["BTC", "SPX", ...FULL_UNIVERSE];
+  const allSyms = [...new Set(["BTC", "SPX", ...FULL_UNIVERSE])];
   const ohlcByS: Record<string, Array<{ date: string; close: number }>> = {};
   const fetched = await Promise.all(allSyms.map((sym) => fetchOhlc(args.supabase, sym, fromStr, toStr)));
   for (let i = 0; i < allSyms.length; i++) if (fetched[i].length) ohlcByS[allSyms[i]] = fetched[i];

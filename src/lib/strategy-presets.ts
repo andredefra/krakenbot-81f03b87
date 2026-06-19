@@ -125,12 +125,12 @@ export const PRESETS: StrategyPreset[] = [
     },
     description: {
       summary:
-        "85% in core BTC/ETH (70/30) con filtro macro BTC vs SMA200, 15% di satellite quasi spento (max 1 posizione, ≤3 trade/mese, cooldown 72h). Pensato per chi vuole essere quasi solo core: minima varianza e fee minime.",
-      assets: ["Core: BTC, ETH", "Satellite: universo Kraken filtrato (no fiat/commodity)"],
+        "85% in core BTC/ETH (70/30) con filtro macro BTC vs SMA200, 15% di satellite multi-asset quasi spento (max 1 posizione, ≤3 trade/mese, cooldown 72h). Pensato per chi vuole essere quasi solo core: minima varianza e fee minime.",
+      assets: ["Core: BTC, ETH", "Satellite: universo Kraken multi-asset (crypto, xStocks/token azionari, forex, commodity)"],
       entryRules: [
         "Macro: BTC sopra SMA200 (core investito)",
         "Medio: BTC sopra SMA50 + F&G ≤ 70 (satellite armato)",
-        "Universo: volume 24h > 5M USD, spread < 0.3%, età > 60g, no fiat/commodity",
+        "Universo: volume 24h > 5M USD, spread < 0.3%, età > 60g; include xStocks/token azionari, forex e commodity Kraken",
         "Trend up + breakout con volume, target minimo +5%",
       ],
       exitRules: [
@@ -181,12 +181,12 @@ export const PRESETS: StrategyPreset[] = [
     },
     description: {
       summary:
-        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v4 multi-asset: meno frequenza = meno drag da commissioni reali Kraken.",
-      assets: ["Core: BTC, ETH", "Satellite: universo Kraken filtrato (no fiat/commodity)"],
+        "70% core BTC/ETH (60/40) con filtro macro BTC vs SMA200, 30% sleeve satellite multi-asset severo (max 2 posizioni, ≤6 trade/mese, target minimo +5%, cooldown 48h). Default v4 multi-asset: meno frequenza = meno drag da commissioni reali Kraken.",
+      assets: ["Core: BTC, ETH", "Satellite: universo Kraken multi-asset (crypto, xStocks/token azionari, forex, commodity)"],
       entryRules: [
         "Macro: BTC sopra SMA200 (core investito)",
         "Medio: BTC sopra SMA50 + F&G ≤ 75 (satellite armato)",
-        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g, no fiat/commodity",
+        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g; include xStocks/token azionari, forex e commodity Kraken",
         "Trend up + breakout volume, target minimo +5% (per coprire fee Kraken ~0.8% a giro)",
       ],
       exitRules: [
@@ -237,12 +237,12 @@ export const PRESETS: StrategyPreset[] = [
     },
     description: {
       summary:
-        "55% core BTC/ETH (50/50), 45% sleeve satellite più ampio (max 3 posizioni, ≤10 trade/mese, cooldown 24h). Più esposizione alle alt. ⚠️ Sconsigliato in bear: le alt crollano più di BTC nel risk-off.",
-      assets: ["Core: BTC, ETH", "Satellite: universo Kraken filtrato (no fiat/commodity)"],
+        "55% core BTC/ETH (50/50), 45% sleeve satellite multi-asset più ampio (max 3 posizioni, ≤10 trade/mese, cooldown 24h). Più esposizione a momentum Kraken cross-asset. ⚠️ Sconsigliato in bear se i segnali sono concentrati su alt crypto.",
+      assets: ["Core: BTC, ETH", "Satellite: universo Kraken multi-asset (crypto, xStocks/token azionari, forex, commodity)"],
       entryRules: [
         "Macro: BTC sopra SMA200",
         "Medio: BTC sopra SMA50 + F&G ≤ 85 (filtro permissivo)",
-        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g, no fiat/commodity",
+        "Universo: volume 24h > 5M, spread < 0.3%, età > 60g; include xStocks/token azionari, forex e commodity Kraken",
         "Trend + breakout, target minimo +5%",
       ],
       exitRules: [

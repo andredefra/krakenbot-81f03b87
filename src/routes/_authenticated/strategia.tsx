@@ -541,9 +541,9 @@ function AssetClassPanel({ settings }: { settings: Record<string, unknown> | und
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Coins className="size-5" /> Strategia v4 — Allocazione per classe di asset</CardTitle>
         <CardDescription>
-          Il preset scelto definisce anche la ripartizione tra Crypto, Azioni, Futures e Forex.
-          Stocks/Futures/Forex sono <strong>solo Paper</strong> finché non integriamo un broker dedicato:
-          il GO LIVE resta crypto-only (Kraken).
+          Il preset scelto definisce anche la ripartizione tra Crypto, Azioni tokenizzate/xStocks, Futures e Forex.
+          Il satellite valuta questi strumenti quando sono presenti su Kraken e superano volume, spread ed età minima;
+          in LIVE l'operatività resta vincolata agli strumenti realmente abilitati dall'account Kraken.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
