@@ -74,8 +74,9 @@ export function PortfolioPieChart({ data, loading, onRefresh }: Props) {
           <CardDescription>
             {drillClass
               ? <>Dettaglio: <strong>{CLASS_LABELS[drillClass]}</strong> · clicca "Indietro" per tornare alla vista generale</>
-              : "Vista per asset class. Clicca uno spicchio per il dettaglio."}
+              : <>Vista per asset class. Clicca uno spicchio per il dettaglio.<br /><span className="text-xs text-muted-foreground">Le posizioni importate da Kraken diverse da BTC/ETH (core) sono trattate come <strong>satellite</strong> e gestite con stop/trailing standard.</span></>}
           </CardDescription>
+
         </div>
         <div className="flex items-center gap-2">
           {drillClass && (
