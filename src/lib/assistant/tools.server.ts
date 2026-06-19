@@ -35,16 +35,37 @@ export function buildAssistantTools(supabase: DB, userId: string) {
     }),
 
     getOpenPositions: tool({
-      description: "Restituisce tutte le posizioni attualmente aperte con prezzo di ingresso, prezzo corrente, quantità, stop e trailing.",
+      description: "Restituisce le posizioni aperte. In LIVE legge Kraken (BalanceEx, OpenOrders, OpenPositions); in PAPER legge la tabella positions.",
       inputSchema: z.object({}),
       execute: async () => {
+        const { data: settings } = await supabase
+          .from("settings")
+          .select("mode")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const mode = settings?.mode === "live" ? "live" : "paper";
+        if (mode === "live") {
+          try {
+            const { loadLivePortfolioSnapshot, livePositionsFromSnapshot } = await import("@/lib/portfolio.functions");
+            const snapshot = await loadLivePortfolioSnapshot(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
+            return { ok: true, source: "kraken-live", mode, positions: livePositionsFromSnapshot(snapshot), warnings: snapshot.warnings };
+          } catch (e) {
+            const err = e as { code?: string; httpStatus?: number; krakenErrors?: string[]; hint?: string | null; message?: string };
+            console.error("[assistant:getOpenPositions]", err);
+            return {
+              ok: false, source: "kraken-live", mode,
+              error: { code: err.code ?? "UNKNOWN", message: err.message ?? String(e), httpStatus: err.httpStatus ?? 0, krakenErrors: err.krakenErrors ?? [], hint: err.hint ?? null },
+            };
+          }
+        }
         const { data, error } = await supabase
           .from("positions")
           .select("id,asset,side,qty,entry_price,current_price,entry_value,stop_price,trailing_high,opened_at,mode,open_reason")
+          .eq("user_id", userId)
           .eq("status", "open")
           .order("opened_at", { ascending: false });
         if (error) throw new Error(error.message);
-        return data ?? [];
+        return { ok: true, source: "paper", mode, positions: data ?? [] };
       },
     }),
 
@@ -104,40 +125,26 @@ export function buildAssistantTools(supabase: DB, userId: string) {
       description: "Composizione live del portafoglio: in modalità LIVE interroga Kraken (Balance + Ticker) e ritorna saldi reali per asset class; in PAPER usa le posizioni simulate. In caso di errore Kraken restituisce il messaggio reale (es. 'EAPI:Invalid key', 'EGeneral:Permission denied') così puoi spiegarlo all'utente.",
       inputSchema: z.object({}),
       execute: async () => {
-        const { getLivePortfolio } = await import("@/lib/portfolio.functions");
-        // chiamiamo direttamente la fn server (siamo già in contesto server)
-        // Ricreiamo l'invocazione passando context simulato non è banale,
-        // quindi eseguiamo la logica equivalente inline:
         const { data: settings } = await supabase
           .from("settings").select("mode").eq("user_id", userId).maybeSingle();
         const mode = (settings?.mode === "live" ? "live" : "paper") as "live" | "paper";
         if (mode === "live") {
           try {
-            const { fetchKrakenBalance, fetchKrakenPublicTicker, normalizeKrakenAsset, isFiat, KrakenApiError } =
-              await import("@/lib/kraken.server");
-            const balance = await fetchKrakenBalance(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
-            const aggregated: Record<string, number> = {};
-            for (const [raw, v] of Object.entries(balance)) {
-              const qty = Number(v); if (!Number.isFinite(qty) || qty === 0) continue;
-              const s = normalizeKrakenAsset(raw); aggregated[s] = (aggregated[s] ?? 0) + qty;
-            }
-            const cryptoSyms = Object.keys(aggregated).filter((s) => !isFiat(s));
-            const ticker = cryptoSyms.length ? await fetchKrakenPublicTicker(cryptoSyms.map((s) => `${s === "BTC" ? "XBT" : s}USD`)) : {};
-            const holdings = Object.entries(aggregated).map(([sym, qty]) => {
-              if (isFiat(sym)) return { symbol: sym, qty, priceUsd: sym === "USD" ? 1 : null, valueUsd: sym === "USD" ? qty : null };
-              const k = Object.keys(ticker).find((kk) => kk.includes(sym === "BTC" ? "XBT" : sym));
-              const px = k ? ticker[k] : null;
-              return { symbol: sym, qty, priceUsd: px, valueUsd: px != null ? qty * px : null };
+            const { loadLivePortfolioSnapshot } = await import("@/lib/portfolio.functions");
+            const { isFiat } = await import("@/lib/kraken.server");
+            const snapshot = await loadLivePortfolioSnapshot(process.env.KRAKEN_API_KEY ?? "", process.env.KRAKEN_API_SECRET ?? "");
+            const holdings = Object.entries(snapshot.balances).map(([symbol, qty]) => {
+              const priceUsd = isFiat(symbol) ? (symbol === "USD" ? 1 : null) : (snapshot.prices[symbol] ?? null);
+              return { symbol, qty, priceUsd, valueUsd: priceUsd != null ? qty * priceUsd : null };
             });
-            const totalUsd = holdings.reduce((a, h) => a + (h.valueUsd ?? 0), 0);
-            return { source: "kraken-live", mode, totalValueUsd: totalUsd, holdings, fetchedAt: new Date().toISOString() };
-            // KrakenApiError importata per typing
-            void KrakenApiError;
+            const totalValueUsd = holdings.reduce((a, h) => a + (h.valueUsd ?? 0), 0);
+            return { ok: true, source: "kraken-live", mode, totalValueUsd, holdings, openOrders: Object.keys(snapshot.openOrders).length, openPositions: Object.keys(snapshot.openPositions).length, warnings: snapshot.warnings, fetchedAt: new Date().toISOString() };
           } catch (e) {
-            const err = e as { code?: string; httpStatus?: number; krakenErrors?: string[]; hint?: string | null; message: string };
+            const err = e as { code?: string; httpStatus?: number; krakenErrors?: string[]; hint?: string | null; message?: string };
+            console.error("[assistant:getPortfolio]", err);
             return {
               source: "kraken-live", mode, ok: false,
-              error: { code: err.code ?? "UNKNOWN", message: err.message, httpStatus: err.httpStatus ?? 0, krakenErrors: err.krakenErrors ?? [], hint: err.hint ?? null },
+              error: { code: err.code ?? "UNKNOWN", message: err.message ?? String(e), httpStatus: err.httpStatus ?? 0, krakenErrors: err.krakenErrors ?? [], hint: err.hint ?? null },
             };
           }
         }
