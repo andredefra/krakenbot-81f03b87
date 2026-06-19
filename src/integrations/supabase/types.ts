@@ -204,6 +204,7 @@ export type Database = {
       }
       engine_diagnostics: {
         Row: {
+          asset_class_exposure: Json | null
           bear_dca_state: Json | null
           btc_last: number | null
           btc_sma200: number | null
@@ -226,6 +227,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          asset_class_exposure?: Json | null
           bear_dca_state?: Json | null
           btc_last?: number | null
           btc_sma200?: number | null
@@ -248,6 +250,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          asset_class_exposure?: Json | null
           bear_dca_state?: Json | null
           btc_last?: number | null
           btc_sma200?: number | null
@@ -484,6 +487,7 @@ export type Database = {
       positions: {
         Row: {
           asset: string
+          asset_class: string
           closed_at: string | null
           created_at: string
           current_price: number | null
@@ -511,6 +515,7 @@ export type Database = {
         }
         Insert: {
           asset: string
+          asset_class?: string
           closed_at?: string | null
           created_at?: string
           current_price?: number | null
@@ -538,6 +543,7 @@ export type Database = {
         }
         Update: {
           asset?: string
+          asset_class?: string
           closed_at?: string | null
           created_at?: string
           current_price?: number | null
@@ -602,6 +608,7 @@ export type Database = {
         Row: {
           ai_bear_dca_fg_threshold: number
           ai_supervisor_state: Json | null
+          asset_class_split: Json
           asset_universe: Json
           bear_dca_cap_pct: number
           bear_dca_enabled: boolean
@@ -618,6 +625,8 @@ export type Database = {
           enabled_sentiment_sources: Json
           exclude_fiat_commodity: boolean
           fg_greed_cap: number
+          forex_universe: string[]
+          futures_universe: string[]
           id: string
           is_running: boolean
           kill_switch_floor: number
@@ -640,6 +649,7 @@ export type Database = {
           risk_per_trade_pct: number
           sentiment_weights: Json
           slippage_pct: number
+          stocks_universe: string[]
           stop_atr_mult: number
           stop_loss_pct: number
           stop_min_pct: number
@@ -657,6 +667,7 @@ export type Database = {
         Insert: {
           ai_bear_dca_fg_threshold?: number
           ai_supervisor_state?: Json | null
+          asset_class_split?: Json
           asset_universe?: Json
           bear_dca_cap_pct?: number
           bear_dca_enabled?: boolean
@@ -673,6 +684,8 @@ export type Database = {
           enabled_sentiment_sources?: Json
           exclude_fiat_commodity?: boolean
           fg_greed_cap?: number
+          forex_universe?: string[]
+          futures_universe?: string[]
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
@@ -695,6 +708,7 @@ export type Database = {
           risk_per_trade_pct?: number
           sentiment_weights?: Json
           slippage_pct?: number
+          stocks_universe?: string[]
           stop_atr_mult?: number
           stop_loss_pct?: number
           stop_min_pct?: number
@@ -712,6 +726,7 @@ export type Database = {
         Update: {
           ai_bear_dca_fg_threshold?: number
           ai_supervisor_state?: Json | null
+          asset_class_split?: Json
           asset_universe?: Json
           bear_dca_cap_pct?: number
           bear_dca_enabled?: boolean
@@ -728,6 +743,8 @@ export type Database = {
           enabled_sentiment_sources?: Json
           exclude_fiat_commodity?: boolean
           fg_greed_cap?: number
+          forex_universe?: string[]
+          futures_universe?: string[]
           id?: string
           is_running?: boolean
           kill_switch_floor?: number
@@ -750,6 +767,7 @@ export type Database = {
           risk_per_trade_pct?: number
           sentiment_weights?: Json
           slippage_pct?: number
+          stocks_universe?: string[]
           stop_atr_mult?: number
           stop_loss_pct?: number
           stop_min_pct?: number
@@ -846,6 +864,7 @@ export type Database = {
       universe: {
         Row: {
           asset: string
+          asset_class: string
           base: string
           created_at: string
           eligible: boolean
@@ -860,6 +879,7 @@ export type Database = {
         }
         Insert: {
           asset: string
+          asset_class?: string
           base: string
           created_at?: string
           eligible?: boolean
@@ -874,6 +894,7 @@ export type Database = {
         }
         Update: {
           asset?: string
+          asset_class?: string
           base?: string
           created_at?: string
           eligible?: boolean
