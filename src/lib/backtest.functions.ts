@@ -96,7 +96,7 @@ export const runBacktestFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Load user-specific fees + bear-DCA params from settings (v3)
+    // Load user-specific fees + bear-DCA params from settings (v4)
     const settingsRes = await supabase
       .from("settings")
       .select("maker_fee_pct, taker_fee_pct, slippage_pct, bear_dca_enabled, bear_dca_fg_threshold, bear_dca_cap_pct, bear_dca_tranche_pct, bear_dca_interval_days")
