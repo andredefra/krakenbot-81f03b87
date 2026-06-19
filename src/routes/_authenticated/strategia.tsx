@@ -89,6 +89,8 @@ function StrategiaPage() {
         </Card>
       )}
 
+      <AssetClassPanel settings={settingsQ.data as Record<string, unknown> | undefined} />
+
       <BacktestSection />
 
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
