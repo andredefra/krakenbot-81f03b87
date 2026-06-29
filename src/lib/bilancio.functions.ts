@@ -265,6 +265,38 @@ export const getIncomeStatement = createServerFn({ method: "POST" })
     return { year: data.year, mode: data.mode, monthly, ytd, runRateAnnual };
   });
 
+// Returns unrealized P/L on currently open positions for the given mode.
+export const getUnrealizedPnl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ mode: z.enum(["paper", "live"]) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("positions")
+      .select("asset,qty,entry_value,entry_price,current_price")
+      .eq("mode", data.mode)
+      .eq("status", "open");
+    if (error) throw new Error(error.message);
+    let unrealizedCents = 0;
+    let exposureCents = 0;
+    const positions = (rows ?? []).map((p) => {
+      const cur = Number(p.current_price ?? p.entry_price);
+      const qty = Number(p.qty);
+      const entryValue = Number(p.entry_value);
+      const upnl = cur * qty - entryValue;
+      const upct = entryValue > 0 ? (upnl / entryValue) * 100 : 0;
+      unrealizedCents += Math.round(upnl * 100);
+      exposureCents += Math.round(cur * qty * 100);
+      return {
+        asset: p.asset as string,
+        unrealizedCents: Math.round(upnl * 100),
+        unrealizedPct: Number(upct.toFixed(2)),
+      };
+    });
+    return { unrealizedCents, exposureCents, count: positions.length, positions };
+  });
+
 export const getTaxSummary = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>

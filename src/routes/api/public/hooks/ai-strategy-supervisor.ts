@@ -8,7 +8,7 @@
 // Fase B (AI osserva e propone): genera report "investment officer" + eventuali
 //   proposte di modifica parametri (status=pending). MAI applicate in automatico.
 import { createFileRoute } from "@tanstack/react-router";
-import { generateText, Output } from "ai";
+import { generateObject } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "@/lib/assistant/ai-gateway.server";
 
@@ -29,20 +29,22 @@ const PROPOSABLE_FIELDS = [
 ] as const;
 type ProposableField = (typeof PROPOSABLE_FIELDS)[number];
 
+// NOTE: Gemini structured-output rejects schemas with too many states.
+// Keep types only — validate ranges in code after parsing.
 const ProposalSchema = z.object({
-  title: z.string().min(5).max(120),
-  rationale: z.string().min(10).max(800),
+  title: z.string(),
+  rationale: z.string(),
   param_diff: z.array(z.object({
     field: z.enum(PROPOSABLE_FIELDS),
     from: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
     to: z.union([z.string(), z.number(), z.boolean()]),
-  })).min(1).max(6),
+  })),
 });
 
 const ReportSchema = z.object({
-  narrative: z.string().min(20).max(2500),
-  anomalies: z.array(z.string().max(400)).max(8).default([]),
-  proposals: z.array(ProposalSchema).max(3).default([]),
+  narrative: z.string(),
+  anomalies: z.array(z.string()),
+  proposals: z.array(ProposalSchema),
 });
 type ReportT = z.infer<typeof ReportSchema>;
 
@@ -65,20 +67,21 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
   server: {
     handlers: {
       POST: async () => {
-        const cronKey = process.env.LOVABLE_API_KEY;
-        if (!cronKey) return Response.json({ ok: false, error: "Missing LOVABLE_API_KEY" }, { status: 500 });
+        try {
+          const cronKey = process.env.LOVABLE_API_KEY;
+          if (!cronKey) return Response.json({ ok: false, error: "Missing LOVABLE_API_KEY" }, { status: 500 });
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-        const { data: users, error: usersErr } = await supabaseAdmin
-          .from("settings")
-          .select("user_id,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,ai_bear_dca_fg_threshold,kill_switch_floor,capital_reference")
-          .eq("is_running", true);
-        if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
+          const { data: users, error: usersErr } = await supabaseAdmin
+            .from("settings")
+            .select("user_id,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,ai_bear_dca_fg_threshold,kill_switch_floor,capital_reference")
+            .eq("is_running", true);
+          if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
 
-        const gateway = createLovableAiGatewayProvider(cronKey);
-        const model = gateway("google/gemini-3-flash-preview");
-        const results: Array<Record<string, unknown>> = [];
+          const gateway = createLovableAiGatewayProvider(cronKey);
+          const model = gateway("google/gemini-3-flash-preview");
+          const results: Array<Record<string, unknown>> = [];
 
         for (const u of users ?? []) {
           try {
@@ -219,12 +222,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
             };
 
             // ===== Fase B — Report + proposte =====
-            const { experimental_output: report } = await generateText({
+            const { object: report } = await generateObject({
               model,
               system: SYSTEM_PROMPT,
               prompt: `MERCATO:\n${JSON.stringify(marketSnapshot, null, 2)}\n\nBOT (ultimi 30g):\n${JSON.stringify(selfSnapshot, null, 2)}\n\nFlag (decisi da regole):\n${JSON.stringify(desired, null, 2)}\n\nGenera il report e, se opportuno, proposte di modifica parametri.`,
-              experimental_output: Output.object({ schema: ReportSchema }),
-            }) as { experimental_output: ReportT };
+              schema: ReportSchema,
+            }) as { object: ReportT };
 
             const { data: reportRow, error: reportErr } = await supabaseAdmin
               .from("ai_reports")
@@ -275,7 +278,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
           }
         }
 
-        return Response.json({ ok: true, processed: results.length, results });
+          return Response.json({ ok: true, processed: results.length, results });
+        } catch (fatal) {
+          const msg = fatal instanceof Error ? `${fatal.message}\n${fatal.stack ?? ""}` : String(fatal);
+          console.error("[ai-supervisor] fatal", msg);
+          return Response.json({ ok: false, error: msg }, { status: 500 });
+        }
       },
     },
   },

@@ -38,6 +38,7 @@ import {
   deleteInfraCost,
   bulkImportInfraCosts,
   getIncomeStatement,
+  getUnrealizedPnl,
   getTaxSummary,
   syncKrakenFees,
 } from "@/lib/bilancio.functions";
@@ -515,24 +516,37 @@ function TradingCostsSection({ mode }: { mode: "paper" | "live" }) {
 
 function IncomeStatementSection({ year, mode }: { year: number; mode: "paper" | "live" }) {
   const get = useServerFn(getIncomeStatement);
+  const getUpnl = useServerFn(getUnrealizedPnl);
   const q = useQuery({
     queryKey: ["income_statement", year, mode],
     queryFn: () => get({ data: { year, mode } }),
+  });
+  const upnlQ = useQuery({
+    queryKey: ["unrealized_pnl", mode],
+    queryFn: () => getUpnl({ data: { mode } }),
+    refetchInterval: 60_000,
   });
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Conto economico</CardTitle>
-        <CardDescription>Ricavi, fees, infrastruttura, tasse stimate → utile netto.</CardDescription>
+        <CardDescription>
+          Ricavi, fees, infrastruttura, tasse stimate → utile netto. Il P/L non realizzato non entra nel calcolo fiscale.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {q.isLoading || !q.data ? (
           <Skeleton className="h-64 w-full" />
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Kpi label="Ricavi YTD" value={eur(q.data.ytd.revenueCents)} positive={q.data.ytd.revenueCents >= 0} />
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <Kpi label="Ricavi YTD (realizzato)" value={eur(q.data.ytd.revenueCents)} positive={q.data.ytd.revenueCents >= 0} />
+              <Kpi
+                label={`P/L non realizzato (${upnlQ.data?.count ?? 0} aperte)`}
+                value={eur(upnlQ.data?.unrealizedCents ?? 0)}
+                positive={(upnlQ.data?.unrealizedCents ?? 0) >= 0}
+              />
               <Kpi label="Costi totali YTD" value={eur(q.data.ytd.feeCents + q.data.ytd.infraCostCents)} />
               <Kpi label="Tasse stimate YTD" value={eur(q.data.ytd.taxCents)} />
               <Kpi label="Utile netto YTD" value={eur(q.data.ytd.netCents)} positive={q.data.ytd.netCents >= 0} />

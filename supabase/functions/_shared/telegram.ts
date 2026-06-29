@@ -100,18 +100,20 @@ export function fmtDailySummary(args: {
   openLines: string[];
   realizedToday: number;
   closedToday: number;
+  unrealizedTotal: number;
   regime: string;
   fgValue: number | null;
   fgLabel: string;
 }) {
   const dd = Number(args.dayDelta);
+  const upnl = Number(args.unrealizedTotal);
   const lines = [
     `📊 RIEPILOGO ${args.date}`,
     `💼 Portafoglio: ${f(args.portfolioTotal, 2)} USD (${Number.isFinite(dd) && dd >= 0 ? "+" : ""}${f(dd, 2)} oggi)`,
     `Posizioni aperte: ${args.openCount}`,
     ...args.openLines.map((l) => `  • ${l}`),
-    `P/L realizzato oggi: ${f(args.realizedToday, 2)} USD`,
-    `Trade chiusi oggi: ${args.closedToday}`,
+    `P/L non realizzato (aperte): ${Number.isFinite(upnl) && upnl >= 0 ? "+" : ""}${f(upnl, 2)} USD`,
+    `P/L realizzato oggi: ${f(args.realizedToday, 2)} USD (${args.closedToday} trade chiusi)`,
     `Regime: ${args.regime} | Fear&Greed: ${args.fgValue ?? "—"} (${args.fgLabel})`,
   ];
   return lines.join("\n");
