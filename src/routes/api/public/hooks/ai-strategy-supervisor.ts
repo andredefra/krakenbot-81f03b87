@@ -8,7 +8,7 @@
 // Fase B (AI osserva e propone): genera report "investment officer" + eventuali
 //   proposte di modifica parametri (status=pending). MAI applicate in automatico.
 import { createFileRoute } from "@tanstack/react-router";
-import { generateText, Output } from "ai";
+import { generateObject } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "@/lib/assistant/ai-gateway.server";
 
@@ -222,12 +222,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
             };
 
             // ===== Fase B — Report + proposte =====
-            const { experimental_output: report } = await generateText({
+            const { object: report } = await generateObject({
               model,
               system: SYSTEM_PROMPT,
               prompt: `MERCATO:\n${JSON.stringify(marketSnapshot, null, 2)}\n\nBOT (ultimi 30g):\n${JSON.stringify(selfSnapshot, null, 2)}\n\nFlag (decisi da regole):\n${JSON.stringify(desired, null, 2)}\n\nGenera il report e, se opportuno, proposte di modifica parametri.`,
-              experimental_output: Output.object({ schema: ReportSchema }),
-            }) as { experimental_output: ReportT };
+              schema: ReportSchema,
+            }) as { object: ReportT };
 
             const { data: reportRow, error: reportErr } = await supabaseAdmin
               .from("ai_reports")
