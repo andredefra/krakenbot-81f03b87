@@ -29,20 +29,22 @@ const PROPOSABLE_FIELDS = [
 ] as const;
 type ProposableField = (typeof PROPOSABLE_FIELDS)[number];
 
+// NOTE: Gemini structured-output rejects schemas with too many states.
+// Keep types only — validate ranges in code after parsing.
 const ProposalSchema = z.object({
-  title: z.string().min(5).max(120),
-  rationale: z.string().min(10).max(800),
+  title: z.string(),
+  rationale: z.string(),
   param_diff: z.array(z.object({
     field: z.enum(PROPOSABLE_FIELDS),
     from: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
     to: z.union([z.string(), z.number(), z.boolean()]),
-  })).min(1).max(6),
+  })),
 });
 
 const ReportSchema = z.object({
-  narrative: z.string().min(20).max(2500),
-  anomalies: z.array(z.string().max(400)).max(8).default([]),
-  proposals: z.array(ProposalSchema).max(3).default([]),
+  narrative: z.string(),
+  anomalies: z.array(z.string()),
+  proposals: z.array(ProposalSchema),
 });
 type ReportT = z.infer<typeof ReportSchema>;
 
