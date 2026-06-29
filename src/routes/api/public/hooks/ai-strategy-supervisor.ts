@@ -282,14 +282,6 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
         } catch (fatal) {
           const msg = fatal instanceof Error ? `${fatal.message}\n${fatal.stack ?? ""}` : String(fatal);
           console.error("[ai-supervisor] fatal", msg);
-          try {
-            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-            await supabaseAdmin.from("events_log").insert({
-              component: "ai-supervisor",
-              level: "error",
-              message: `Supervisor crash: ${msg.slice(0, 500)}`,
-            });
-          } catch { /* ignore */ }
           return Response.json({ ok: false, error: msg }, { status: 500 });
         }
       },
