@@ -67,20 +67,21 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
   server: {
     handlers: {
       POST: async () => {
-        const cronKey = process.env.LOVABLE_API_KEY;
-        if (!cronKey) return Response.json({ ok: false, error: "Missing LOVABLE_API_KEY" }, { status: 500 });
+        try {
+          const cronKey = process.env.LOVABLE_API_KEY;
+          if (!cronKey) return Response.json({ ok: false, error: "Missing LOVABLE_API_KEY" }, { status: 500 });
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-        const { data: users, error: usersErr } = await supabaseAdmin
-          .from("settings")
-          .select("user_id,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,ai_bear_dca_fg_threshold,kill_switch_floor,capital_reference")
-          .eq("is_running", true);
-        if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
+          const { data: users, error: usersErr } = await supabaseAdmin
+            .from("settings")
+            .select("user_id,strategy_preset,core_only_mode,bear_dca_enabled,exclude_fiat_commodity,ai_bear_dca_fg_threshold,kill_switch_floor,capital_reference")
+            .eq("is_running", true);
+          if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
 
-        const gateway = createLovableAiGatewayProvider(cronKey);
-        const model = gateway("google/gemini-3-flash-preview");
-        const results: Array<Record<string, unknown>> = [];
+          const gateway = createLovableAiGatewayProvider(cronKey);
+          const model = gateway("google/gemini-3-flash-preview");
+          const results: Array<Record<string, unknown>> = [];
 
         for (const u of users ?? []) {
           try {
