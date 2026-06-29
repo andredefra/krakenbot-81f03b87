@@ -53,10 +53,12 @@ Deno.serve(async (req) => {
         .select("asset,entry_value,qty,current_price,entry_price")
         .eq("user_id", userId)
         .eq("status", "open");
+      let unrealizedTotal = 0;
       const openLines = (openPos ?? []).map((p) => {
         const cur = Number(p.current_price ?? p.entry_price);
         const upnl = cur * Number(p.qty) - Number(p.entry_value);
         const upct = (upnl / Number(p.entry_value)) * 100;
+        unrealizedTotal += Number.isFinite(upnl) ? upnl : 0;
         return `${p.asset}: ${upnl >= 0 ? "+" : ""}${upnl.toFixed(2)} USD (${upct >= 0 ? "+" : ""}${upct.toFixed(2)}%)`;
       });
 
@@ -99,6 +101,7 @@ Deno.serve(async (req) => {
         openLines,
         realizedToday: realized,
         closedToday: closedToday?.length ?? 0,
+        unrealizedTotal,
         regime: regimeLabel,
         fgValue,
         fgLabel,
