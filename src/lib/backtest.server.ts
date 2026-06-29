@@ -178,24 +178,49 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     assetDates[sym] = assets[sym].map((c) => c.date);
   }
 
-  // ============ CORE SLEEVE init (buy & hold equipesato) ============
-  // Quota core allocata day-1 in core_assets disponibili. Resta investita
-  // tutto il periodo. Fee + slippage applicati all'ingresso.
+  // ============ CORE SLEEVE (regime-gated buy & hold equipesato) ============
+  // v8: il core non è più sempre investito. Quando il filtro macro è risk-off
+  // ruota in stable (cash) e rientra al ritorno risk-on. Questo è il motore di
+  // outperformance risk-adjusted: salta i grandi bear invece di subirli.
   const corePct = Math.max(0, Math.min(1, preset.core_pct ?? 0));
-  const coreBudget = startCapital * corePct;
-  const satBudget = startCapital - coreBudget;
-  const coreUnits: Record<string, number> = {};
+  const coreBudgetInitial = startCapital * corePct;
+  const satBudget = startCapital - coreBudgetInitial;
   const availableCore = preset.core_assets.filter((s) => assets[s] && assets[s].length > 0);
-  if (availableCore.length > 0 && coreBudget > 0) {
-    const slice = coreBudget / availableCore.length;
+
+  // Stato core: o "invested" (units per asset) oppure "cash" (USD parcheggiati).
+  let coreInvested = false;
+  let coreUnits: Record<string, number> = {};
+  let coreCash = coreBudgetInitial; // cash che resta nel core sleeve quando risk-off
+
+  function enterCore(date: string) {
+    if (coreInvested || availableCore.length === 0 || coreCash <= 0) return;
+    const slice = coreCash / availableCore.length;
     for (const sym of availableCore) {
-      const entry = assets[sym][0].close * (1 + slippagePct / 100);
+      const c = assetIdx[sym]?.get(date);
+      if (!c) { coreUnits[sym] = 0; continue; }
+      const entry = c.close * (1 + slippagePct / 100);
       const fee = slice * (feePct / 100);
       coreUnits[sym] = (slice - fee) / entry;
     }
+    coreCash = 0;
+    coreInvested = true;
   }
 
-  let cash = satBudget; // cash riservata al satellite + Bear-DCA
+  function exitCore(date: string) {
+    if (!coreInvested) return;
+    let cashOut = 0;
+    for (const sym of availableCore) {
+      const c = assetIdx[sym]?.get(date);
+      const price = c ? c.close : 0;
+      const gross = (coreUnits[sym] ?? 0) * price * (1 - slippagePct / 100);
+      cashOut += gross * (1 - feePct / 100);
+    }
+    coreCash += cashOut;
+    coreUnits = {};
+    coreInvested = false;
+  }
+
+  let cash = satBudget;
   const open: OpenPos[] = [];
   const tradeLog: Array<{ asset: string; entryDate: string; exitDate: string; pnlPct: number }> = [];
 
@@ -204,21 +229,21 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   const equityDates: string[] = [];
 
   const spxFirst = spx.length ? spx[0].close : null;
+  let lastSpxClose: number | null = spxFirst;
   const coreSet = new Set(preset.core_assets);
 
   // ============ v4 — disciplina trade satellite ============
   const lastExitMs: Record<string, number> = {};
   const cooldownMs = Math.max(0, preset.cooldown_hours) * 3600 * 1000;
-  const tradesPerMonth: Record<string, number> = {}; // YYYY-MM → entries count
+  const tradesPerMonth: Record<string, number> = {};
   const monthlyCap = Math.max(0, preset.monthly_trade_cap || 0);
-  // Entry guard globale: se take-profit non copre target minimo, niente satellite
   const entryGuardOk = preset.take_profit_pct >= preset.min_target_pct;
 
-  // ============ v4 — Bear-DCA su BTC (passivo, crypto-only) ============
+  // ============ v4 — Bear-DCA su BTC (release dentro al CORE al ritorno risk-on) ============
   type DcaTranche = { qty: number; costBasis: number; entryDate: string };
   const dcaTranches: DcaTranche[] = [];
-  let dcaSpent = 0;                                   // somma costBasis (USD)
-  const dcaCap = coreBudget * (preset.regime_filter === "off" ? 0 : (input.bearDca.maxPct / 100));
+  let dcaSpent = 0;
+  const dcaCap = coreBudgetInitial * (preset.regime_filter === "off" ? 0 : (input.bearDca.maxPct / 100));
   const dcaTrancheUsd = startCapital * (input.bearDca.tranchePct / 100);
   const dcaIntervalMs = Math.max(0, input.bearDca.intervalDays) * 86400 * 1000;
   let lastDcaMs = -Infinity;
@@ -229,14 +254,43 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     const ms = new Date(date).getTime();
     const monthKey = date.slice(0, 7);
 
-    // valore core sleeve oggi
-    let coreValue = 0;
-    for (const sym of availableCore) {
-      const c = assetIdx[sym]?.get(date);
-      const price = c ? c.close : (assetCloses[sym]?.[Math.min(i, (assetCloses[sym]?.length ?? 1) - 1)] ?? 0);
-      coreValue += (coreUnits[sym] ?? 0) * price;
+    // ===== regime macro su BTC (gate per CORE e SATELLITE) =====
+    const sma50Btc = sma(btcCloses, 50, i);
+    const sma200Btc = sma(btcCloses, 200, i);
+    const smaDcaBtc = sma(btcCloses, dcaSmaPeriod, i);
+    const btcLast = btcCloses[i];
+    const fgVal = fgIdx.get(date)?.value ?? null;
+    let regimeOk = true;
+    if (preset.regime_filter === "btc_sma50") regimeOk = sma50Btc != null && btcLast > sma50Btc;
+    else if (preset.regime_filter === "btc_sma200") regimeOk = sma200Btc != null && btcLast > sma200Btc;
+    else if (preset.regime_filter === "fg_only") regimeOk = true;
+    const macroOk = regimeOk; // regime "puro" senza F&G, usato per il CORE
+    // Per il SATELLITE applichiamo anche il cap di greed F&G
+    let satelliteRegimeOk = regimeOk;
+    if (preset.regime_filter !== "off" && fgVal != null && fgVal > preset.fg_greed_cap) satelliteRegimeOk = false;
+
+    // ===== gestione CORE: rotazione in/out =====
+    if (preset.regime_filter === "off") {
+      if (!coreInvested) enterCore(date); // sempre dentro se filtro spento
+    } else if (sma200Btc != null) {
+      if (macroOk && !coreInvested) enterCore(date);
+      else if (!macroOk && coreInvested) exitCore(date);
+    } else if (!coreInvested) {
+      // pre-SMA200: entra subito così non perdi il primo anno
+      enterCore(date);
     }
 
+    // valore core oggi (units * close + eventuale cash)
+    let coreValue = coreCash;
+    if (coreInvested) {
+      for (const sym of availableCore) {
+        const c = assetIdx[sym]?.get(date);
+        const price = c ? c.close : 0;
+        coreValue += (coreUnits[sym] ?? 0) * price;
+      }
+    }
+
+    // ===== gestione posizioni satellite aperte (stop/trailing/TP) =====
     let mtmValue = 0;
     for (let j = open.length - 1; j >= 0; j--) {
       const p = open[j];
@@ -259,6 +313,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         exit = true;
         exitPrice = p.entryPrice * (1 + preset.take_profit_pct / 100);
       }
+      // exit forzato se il macro va risk-off (proteggi il satellite)
+      if (!exit && !macroOk) { exit = true; exitPrice = price; }
       if (exit) {
         const grossExit = p.qty * exitPrice * (1 - slippagePct / 100);
         const fee = grossExit * (feePct / 100);
@@ -273,18 +329,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       }
     }
 
-    const sma50Btc = sma(btcCloses, 50, i);
-    const sma200Btc = sma(btcCloses, 200, i);
-    const smaDcaBtc = sma(btcCloses, dcaSmaPeriod, i);
-    const btcLast = btcCloses[i];
-    const fgVal = fgIdx.get(date)?.value ?? null;
-    let regimeOk = true;
-    if (preset.regime_filter === "btc_sma50") regimeOk = sma50Btc != null && btcLast > sma50Btc;
-    else if (preset.regime_filter === "btc_sma200") regimeOk = sma200Btc != null && btcLast > sma200Btc;
-    else if (preset.regime_filter === "fg_only") regimeOk = true;
-    if (preset.regime_filter !== "off" && fgVal != null && fgVal > preset.fg_greed_cap) regimeOk = false;
-
-    // ============ Bear-DCA: gestione tranche BTC ============
+    // ============ Bear-DCA: accumula in deep fear, RILASCIA NEL CORE al risk-on ============
     const macroRiskOff = smaDcaBtc != null && btcLast < smaDcaBtc;
     const btcCandle = assetIdx["BTC"]?.get(date);
     if (input.bearDca.enabled && btcCandle) {
@@ -300,23 +345,27 @@ export function runBacktest(input: BacktestInput): BacktestResult {
           dcaSpent += dcaTrancheUsd;
           lastDcaMs = ms;
         }
-      } else if (!macroRiskOff && dcaTranches.length > 0) {
-        // release: chiudi tutte le tranche al ritorno del regime risk-on
-        const price = btcCandle.close;
-        for (const t of dcaTranches) {
-          const grossExit = t.qty * price * (1 - slippagePct / 100);
-          const fee = grossExit * (feePct / 100);
-          const netExit = grossExit - fee;
-          cash += netExit;
-          const pnlPct = (netExit - t.costBasis) / t.costBasis * 100;
-          tradeLog.push({ asset: "BTC-DCA", entryDate: t.entryDate, exitDate: date, pnlPct });
-        }
+      } else if (!macroRiskOff && dcaTranches.length > 0 && coreInvested) {
+        // release: trasferisci le tranche dentro il core BTC (aumenta units)
+        // così la DCA partecipa al rialzo invece di realizzare in cash.
+        const totalQty = dcaTranches.reduce((s, t) => s + t.qty, 0);
+        const totalCost = dcaTranches.reduce((s, t) => s + t.costBasis, 0);
+        coreUnits["BTC"] = (coreUnits["BTC"] ?? 0) + totalQty;
+        const releasePrice = btcCandle.close;
+        const releaseValue = totalQty * releasePrice;
+        const pnlPct = totalCost > 0 ? (releaseValue - totalCost) / totalCost * 100 : 0;
+        tradeLog.push({
+          asset: "BTC-DCA",
+          entryDate: dcaTranches[0].entryDate,
+          exitDate: date,
+          pnlPct,
+        });
         dcaTranches.length = 0;
         dcaSpent = 0;
       }
     }
 
-    // valore tranche DCA oggi (mark-to-market)
+    // valore tranche DCA aperte (mark-to-market)
     let dcaValue = 0;
     if (dcaTranches.length > 0 && btcCandle) {
       for (const t of dcaTranches) dcaValue += t.qty * btcCandle.close;
@@ -326,13 +375,12 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     const monthCount = tradesPerMonth[monthKey] ?? 0;
     const monthlyOk = monthlyCap === 0 || monthCount < monthlyCap;
 
-    if (entryGuardOk && regimeOk && monthlyOk && open.length < preset.max_positions && satBudget > 0) {
+    if (entryGuardOk && satelliteRegimeOk && monthlyOk && open.length < preset.max_positions && satBudget > 0) {
       for (const sym of Object.keys(assets)) {
-        if (coreSet.has(sym)) continue; // mai aprire satellite sui core asset
+        if (coreSet.has(sym)) continue;
         if (open.length >= preset.max_positions) break;
-        if (!monthlyOk || (monthlyCap > 0 && (tradesPerMonth[monthKey] ?? 0) >= monthlyCap)) break;
+        if (monthlyCap > 0 && (tradesPerMonth[monthKey] ?? 0) >= monthlyCap) break;
         if (open.some((p) => p.asset === sym)) continue;
-        // cooldown sullo stesso asset
         const lastMs = lastExitMs[sym];
         if (lastMs != null && ms - lastMs < cooldownMs) continue;
         const idxArr = assetDates[sym];
@@ -344,9 +392,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         if (!s20 || !s50 || !(s20 > s50)) continue;
         const candle = assetIdx[sym]?.get(date);
         if (!candle) continue;
-        // size relativa al budget satellite (cash + mtm satellite), NON al totale
-        const satPortfolio = cash + mtmValue;
-        const sizeUsd = (preset.max_position_pct / 100) * satPortfolio;
+        // size = % del BUDGET SATELLITE (non del totale): evita drain del core
+        const sizeUsd = (preset.max_position_pct / 100) * satBudget;
         if (sizeUsd > cash * 0.99) continue;
         if (sizeUsd < 5) continue;
         const entryPrice = candle.close * (1 + slippagePct / 100);
@@ -362,9 +409,12 @@ export function runBacktest(input: BacktestInput): BacktestResult {
 
     const equity = cash + mtmValue + coreValue + dcaValue;
     equityStrategy.push(equity);
+
+    // SPX forward-fill pulito (weekend / festivi)
     const spxToday = spxIdx.get(date)?.close;
-    const spxLast = spxToday ?? (equitySpx.length ? (equitySpx[equitySpx.length - 1] / startCapital) * (spxFirst ?? 1) : (spxFirst ?? btcLast));
-    equitySpx.push(spxFirst ? (spxLast / spxFirst) * startCapital : startCapital);
+    if (spxToday != null) lastSpxClose = spxToday;
+    const spxPrice = lastSpxClose ?? spxFirst ?? 1;
+    equitySpx.push(spxFirst ? (spxPrice / spxFirst) * startCapital : startCapital);
     equityDates.push(date);
   }
 

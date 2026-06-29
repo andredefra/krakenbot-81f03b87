@@ -1,53 +1,37 @@
-## Obiettivo
-Fix sintetico ai 3 problemi (P/L 0 su TG fuorviante, "Conto Economico" disallineato, AI Supervisor non genera report/proposte) + reset PAPER pulito per risincronizzare da Kraken.
+## 1. Badge "solo PAPER" — chiarimento e fix
 
-## 1. Daily summary Telegram — distinguere realizzato vs non realizzato
-**File**: `supabase/functions/daily-summary/index.ts` + `supabase/functions/_shared/telegram.ts`
+Hai ragione: l'intero sistema è in PAPER finché non promuovi a LIVE, quindi marcare solo Azioni/Futures/Forex come "solo PAPER" è fuorviante (sembra che le crypto siano già live). Il badge era pensato per dire "anche in LIVE queste classi resteranno simulate finché Kraken non abilita lo strumento", ma genera confusione.
 
-- Calcolare `unrealizedPnl` = somma `(current_price − entry_price) × qty` su `positions` aperte (mode corrente).
-- Aggiornare `fmtDailySummary` con due righe:
-  - `P/L realizzato oggi: X USD (Y trade chiusi)`
-  - `P/L non realizzato attuale: Z USD (N posizioni aperte)`
-- Passare entrambi i valori dall'engine al formatter.
+**Fix**: rimuovo i badge "solo PAPER" dalla card *Allocazione per classe di asset* (`AssetClassPanel` in `src/routes/_authenticated/strategia.tsx`). Sposto la nota in una riga descrittiva sotto, neutra: "Azioni/Futures/Forex saranno operativi in LIVE solo quando Kraken abilita lo strumento sul tuo account". Nessun cambiamento di logica.
 
-## 2. AI Supervisor — capire perché non scrive su `ai_reports` / `ai_proposals`
-**File**: `src/routes/api/public/hooks/ai-strategy-supervisor.ts`
+## 2. Backtest — perché perde contro BTC e S&P, e come renderlo onesto e migliore
 
-- Verificare via `supabase--read_query` quante righe ci sono in `ai_reports` / `ai_proposals` / `ai_flag_changes` e quando è stato eseguito l'ultimo run (events_log).
-- Controllare se il cron `pg_cron` è schedulato e se l'endpoint risponde (`supabase--curl_edge_functions` non si applica, è una route TanStack → uso `stack_modern--invoke-server-function` o curl manuale).
-- Cause probabili da verificare e correggere:
-  - Phase B (Gemini) fallisce silenziosamente → wrappare in try/catch con log esplicito su `events_log` (severity error) anziché return silenzioso.
-  - Insert su `ai_reports` con colonne mancanti / RLS → leggere lo schema e i policy.
-  - Schema Zod troppo grande per Gemini ("too many states") → ridurre enum/proprietà.
-- Aggiungere un campo `last_run_status` su `events_log` per ogni esecuzione (ok/skip/error con motivo).
+Lo screenshot mostra Bilanciato 3y: Strategia +26.5% / BTC +94.8% / SPX +67.3%, con MaxDD strategia -51.6% ≈ BTC -52.5%. Il motivo è che il core (70%) viene comprato day-1 e **tenuto sempre**, senza filtro di regime: in pratica la strategia è "70% BTC/ETH buy & hold + satellite che pareggia (PF 1.02) + Bear-DCA che drena cash". Risultato matematico: ~70% del rendimento di BTC con lo stesso drawdown. Non può battere BTC così.
 
-## 3. Bilancio — aggiungere KPI "P/L non realizzato"
-**File**: `src/routes/_authenticated/bilancio.tsx` + `src/lib/bilancio.functions.ts`
+### Cosa cambio nel motore (`src/lib/backtest.server.ts`)
 
-- Aggiungere card "P/L non realizzato attuale" accanto a "Ricavi YTD" (somma `(current_price − entry_price) × qty` su posizioni aperte mode attivo).
-- Nessuna modifica alla logica fiscale: il non-realizzato non entra mai nel `tax_reserve_cents`.
+1. **Regime filter sul CORE** (non più solo sul satellite). Quando il filtro macro (BTC vs SMA200) è risk-off, il core esce in stable e rientra al ritorno risk-on. È il vero motore di outperformance risk-adjusted: salta il bear del 2025 che oggi affossa la curva.
+2. **Bear-DCA ridisegnato**: le tranche accumulate in deep fear vengono **rilasciate dentro il core** al ritorno risk-on (non vendute a cash). Così la DCA dà boost al rientro invece di realizzare quel poco.
+3. **Forward-fill pulito sulla curva S&P** (oggi c'è un fallback strano che distorce i gap weekend).
+4. **Fee benchmark coerenti**: BTC B&H paga 1 fee di ingresso (già ok), S&P stessa cosa — già coerente, lascio.
+5. **Sizing satellite**: oggi usa `max_position_pct` di (cash+mtm) ma scala su tutto il portafoglio satellite; lo bloccco al **budget satellite reale** così non sfora e non drena il core.
 
-## 4. Reset PAPER pulito
-**Via `supabase--insert`** (DELETE + UPDATE):
+Atteso (qualitativo, non promesso): su 3 anni che includono il bear 2025, la strategia dovrebbe finire con CAGR più basso di BTC in bull pieno ma **MaxDD molto più piccolo** (target -20/-25% vs -52% di BTC) e **Sharpe ≥ BTC**. Su 1y/5y idem. Se in un certo periodo BTC fa solo bull, la strategia farà meno — questo è inevitabile e onesto, ma il gate GO LIVE è proprio risk-adjusted (Sharpe + MaxDD), non rendimento assoluto.
 
-```sql
-DELETE FROM positions          WHERE mode='paper';
-DELETE FROM portfolio_snapshots WHERE mode='paper';
-DELETE FROM engine_diagnostics WHERE mode='paper';
-DELETE FROM events_log         WHERE mode='paper';
-UPDATE settings SET paper_seeded_at=NULL,
-                    paper_seed_total_usd=NULL,
-                    paper_seed_cash_usd=NULL;
-```
+### Cosa NON cambio
+- Niente parametri "magici" tirati per far vincere il backtest a posteriori (sarebbe overfit). I tre preset restano quelli definiti in `strategy-presets.ts`.
+- Niente leva, niente short.
+- Universo satellite resta AI-managed (come già deciso): il backtest usa il pool storico come proxy.
 
-Al prossimo `getLivePortfolio` PAPER → auto-seed da Kraken (logica già esistente).
+### UI backtest (`src/routes/_authenticated/strategia.tsx` → `BacktestSection`)
+- Confermo selettore **1 anno / 3 anni / 5 anni** e i 3 benchmark **Strategia v4 / BTC B&H / S&P 500** (già a posto, lo lascio).
+- Aggiungo una riga di lettura onesta sotto i KPI: "La strategia v4 mira a Sharpe ≥ BTC e MaxDD ≤ BTC, non al rendimento assoluto in bull". Così è chiaro cosa stai guardando.
+- Invalido la cache `backtest_runs` per la nuova versione (bump `input_hash` a `v8`) così rivedi subito i risultati nuovi.
 
-## Fuori scope
-- Nessuna modifica a engine logic (trading-engine già fixato turno precedente).
-- Nessun cambio a strategia/preset/universo.
-- Nessuna modifica al pie chart o al grafico dashboard.
+## File toccati
+- `src/routes/_authenticated/strategia.tsx` — rimozione badge "solo PAPER" + nota riga sotto + riga di lettura nel BacktestSection.
+- `src/lib/backtest.server.ts` — regime filter sul core, Bear-DCA che rilascia nel core, fix forward-fill SPX, sizing satellite vincolato al budget satellite.
+- `src/lib/backtest.functions.ts` — bump `input_hash` a `v8` per bustare la cache.
 
-## Verifica finale
-1. `supabase--read_query` su `ai_reports` post-fix per confermare insert.
-2. Curl manuale del cron AI supervisor per forzare un run e verificare i log.
-3. Trigger daily-summary via shell per ispezionare il messaggio TG formattato (mock chat_id o dry-run).
+## Verifica
+Dopo l'implementazione lancio il backtest 1y/3y/5y in headless e verifico: (a) MaxDD strategia < MaxDD BTC, (b) Sharpe strategia ≥ Sharpe BTC sui 3 orizzonti, (c) nessun crash di runBacktest. Se uno dei tre orizzonti non passa il gate lo dico chiaramente invece di forzare i numeri.

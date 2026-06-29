@@ -531,19 +531,18 @@ function Row({ label, value, positive, negative }: { label: string; value: strin
 function AssetClassPanel({ settings }: { settings: Record<string, unknown> | undefined }) {
   const split = (settings?.asset_class_split as Record<string, number> | undefined) ?? { crypto: 1, stocks: 0, futures: 0, forex: 0 };
   const rows = [
-    { key: "crypto", label: "Crypto", color: "var(--color-chart-1)", paperOnly: false },
-    { key: "stocks", label: "Azioni", color: "var(--color-chart-2)", paperOnly: true },
-    { key: "futures", label: "Futures", color: "var(--color-chart-3)", paperOnly: true },
-    { key: "forex", label: "Forex", color: "var(--color-chart-4)", paperOnly: true },
+    { key: "crypto", label: "Crypto", color: "var(--color-chart-1)" },
+    { key: "stocks", label: "Azioni", color: "var(--color-chart-2)" },
+    { key: "futures", label: "Futures", color: "var(--color-chart-3)" },
+    { key: "forex", label: "Forex", color: "var(--color-chart-4)" },
   ];
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Coins className="size-5" /> Strategia v4 — Allocazione per classe di asset</CardTitle>
         <CardDescription>
-          Il preset scelto definisce anche la ripartizione tra Crypto, Azioni tokenizzate/xStocks, Futures e Forex.
-          Il satellite valuta questi strumenti quando sono presenti su Kraken e superano volume, spread ed età minima;
-          in LIVE l'operatività resta vincolata agli strumenti realmente abilitati dall'account Kraken.
+          Il preset scelto definisce la ripartizione target tra Crypto, Azioni tokenizzate/xStocks, Futures e Forex.
+          Il satellite valuta questi strumenti quando sono presenti su Kraken e superano volume, spread ed età minima.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -555,7 +554,6 @@ function AssetClassPanel({ settings }: { settings: Record<string, unknown> | und
                 <div className="flex items-center gap-2">
                   <span className="size-2.5 rounded-sm" style={{ background: r.color }} />
                   <span className="font-medium">{r.label}</span>
-                  {r.paperOnly && <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/30">solo PAPER</Badge>}
                 </div>
                 <span className="tabular-nums font-medium">{pct}%</span>
               </div>
@@ -565,8 +563,9 @@ function AssetClassPanel({ settings }: { settings: Record<string, unknown> | und
             </div>
           );
         })}
-        <div className="text-xs text-muted-foreground pt-1">
-          Per modificare i valori cambia preset (Conservativo / Bilanciato / Aggressivo) qui sopra.
+        <div className="text-xs text-muted-foreground pt-1 space-y-1">
+          <div>Per modificare i valori cambia preset (Conservativo / Bilanciato / Aggressivo) qui sopra.</div>
+          <div>L'intero sistema opera attualmente in <strong>PAPER</strong>. Azioni, Futures e Forex passeranno a operatività reale solo quando Kraken abilita lo strumento sul tuo account in LIVE.</div>
         </div>
       </CardContent>
     </Card>
