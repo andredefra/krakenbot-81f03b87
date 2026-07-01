@@ -193,11 +193,19 @@ function DashboardPage() {
                   <Badge variant="outline" className={mesoOn ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-red-500/15 text-red-500 border-red-500/30"}>
                     ● {mesoOn ? "RISK-ON" : "RISK-OFF"}
                   </Badge>
-                  {diag.bearDca.active && (
+                  {diag.bearDca.active ? (
                     <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs">
                       ● ACCUMULO IN CORSO
                     </Badge>
-                  )}
+                  ) : diag.bearDca.enabled ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-slate-500/15 text-slate-300 border-slate-500/30 text-xs"
+                      title={`Bear-DCA armato: attende macro=risk-off AND F&G<${diag.bearDca.fgThreshold}`}
+                    >
+                      ● DCA ARMATO
+                    </Badge>
+                  ) : null}
                 </div>
                 <div className="text-xs text-muted-foreground mt-2" title={diag.meso.reason ?? ""}>
                   {diag.settings?.core_only_mode ? "Core-only" : `Satellite ${diag.satellite.open}/${diag.satellite.max}`} · F&G {fgQuery.data?.score != null ? Math.round(fgQuery.data.score) : "—"} {fgLabel !== "—" ? `(${fgLabel})` : ""}

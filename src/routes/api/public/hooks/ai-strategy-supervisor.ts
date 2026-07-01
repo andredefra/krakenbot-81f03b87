@@ -84,8 +84,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
           const results: Array<Record<string, unknown>> = [];
 
         for (const u of users ?? []) {
+          const userId = u.user_id as string;
           try {
-            const userId = u.user_id as string;
+            await supabaseAdmin.from("events_log").insert({
+              user_id: userId, component: "ai-supervisor", level: "info",
+              message: `Supervisor start (preset=${u.strategy_preset ?? "?"})`,
+            });
             const preset = (u.strategy_preset ?? "balanced") as string;
             const fgThreshold = Number(u.ai_bear_dca_fg_threshold ?? 25);
 
@@ -272,9 +276,21 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
               await notifyTelegram(`🧠 AI Supervisor: ${proposalIds.length} nuova/e proposta/e. Apri "Proposte" per rivedere.`);
             }
 
+            await supabaseAdmin.from("events_log").insert({
+              user_id: userId, component: "ai-supervisor", level: "info",
+              message: `Supervisor done: report_id=${reportRow.id} flags_changed=${flagChanges.length} proposals=${proposalIds.length}`,
+              payload: { report_id: reportRow.id, flag_changes: flagChanges.length, proposals: proposalIds.length } as never,
+            });
             results.push({ user_id: userId, ok: true, flag_changes: flagChanges.length, proposals: proposalIds.length });
           } catch (e) {
-            results.push({ user_id: u.user_id, ok: false, error: e instanceof Error ? e.message : String(e) });
+            const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
+            console.error("[ai-supervisor] user error", userId, msg);
+            await supabaseAdmin.from("events_log").insert({
+              user_id: userId, component: "ai-supervisor", level: "error",
+              message: `Supervisor error: ${e instanceof Error ? e.message : String(e)}`,
+              payload: { stack: e instanceof Error ? e.stack : null } as never,
+            });
+            results.push({ user_id: userId, ok: false, error: e instanceof Error ? e.message : String(e) });
           }
         }
 

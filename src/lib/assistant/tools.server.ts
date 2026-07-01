@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { notifyTelegram } from "./telegram.server";
+import { getPreset, type PresetId } from "@/lib/strategy-presets";
 
 type DB = SupabaseClient<Database>;
 
@@ -249,7 +250,9 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         macro_ma_period: z.number().int().min(20).max(400).optional(),
         mid_ma_period: z.number().int().min(10).max(400).optional(),
         // Preset e strategia
-        strategy_preset: z.enum(["conservativo", "bilanciato", "aggressivo"]).optional(),
+        strategy_preset: z
+          .enum(["conservativo", "bilanciato", "aggressivo", "conservative", "balanced", "aggressive"])
+          .optional(),
         regime_filter: z.string().min(1).max(64).optional(),
         rebalance_frequency: z.string().min(1).max(32).optional(),
         // Altri parametri motore
@@ -271,7 +274,57 @@ export function buildAssistantTools(supabase: DB, userId: string) {
             received_keys: Object.keys(patch),
           };
         }
-        const update = Object.fromEntries(entries);
+        const update: Record<string, unknown> = Object.fromEntries(entries);
+
+        // Normalize IT preset names → EN (DB uses EN values) and cascade full preset values
+        const PRESET_MAP: Record<string, PresetId> = {
+          conservativo: "conservative", bilanciato: "balanced", aggressivo: "aggressive",
+          conservative: "conservative", balanced: "balanced", aggressive: "aggressive",
+        };
+        let cascade_fields: string[] = [];
+        if (typeof update.strategy_preset === "string" && PRESET_MAP[update.strategy_preset]) {
+          const presetId = PRESET_MAP[update.strategy_preset];
+          update.strategy_preset = presetId;
+          const preset = getPreset(presetId);
+          if (preset.values) {
+            const v = preset.values;
+            const cascade: Record<string, unknown> = {
+              core_satellite_split: v.core_satellite_split,
+              core_weights: v.core_weights,
+              asset_class_split: v.asset_class_split,
+              stocks_universe: v.stocks_universe,
+              futures_universe: v.futures_universe,
+              forex_universe: v.forex_universe,
+              min_volume_24h: v.min_volume_24h,
+              max_spread_pct: v.max_spread_pct,
+              min_listing_age_days: v.min_listing_age_days,
+              macro_ma_period: v.macro_ma_period,
+              mid_ma_period: v.mid_ma_period,
+              fg_greed_cap: v.fg_greed_cap,
+              max_satellite_positions: v.max_satellite_positions,
+              risk_per_trade_pct: v.risk_per_trade_pct,
+              stop_atr_mult: v.stop_atr_mult,
+              stop_min_pct: v.stop_min_pct,
+              trailing_activate_pct: v.trailing_activate_pct,
+              trailing_gap_pct: v.trailing_gap_pct,
+              take_profit_pct: v.take_profit_pct,
+              min_target_pct: v.min_target_pct,
+              monthly_trade_cap: v.monthly_trade_cap,
+              cooldown_hours: v.cooldown_hours,
+              daily_loss_limit_pct: v.daily_loss_limit_pct,
+              timeframe: v.timeframe,
+              max_positions: v.max_positions,
+              max_position_pct: v.max_position_pct,
+              stop_loss_pct: v.stop_loss_pct,
+            };
+            // Non sovrascrivere campi già passati esplicitamente in patch
+            for (const [k, val] of Object.entries(cascade)) {
+              if (!(k in patch)) update[k] = val;
+            }
+            cascade_fields = Object.keys(cascade).filter((k) => !(k in patch));
+          }
+        }
+
         const { data, error } = await supabase
           .from("settings")
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -280,10 +333,10 @@ export function buildAssistantTools(supabase: DB, userId: string) {
           .select("*")
           .maybeSingle();
         if (error) return { ok: false, error: error.message };
-        const summary = entries.map(([k, v]) => `${k}=${v}`).join(", ");
+        const summary = Object.entries(update).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(", ");
         await logEvent(supabase, userId, "info", `Assistente: aggiornati parametri (${summary})`);
         await notifyTelegram(`🛠️ [PAPER] Assistente: aggiornati parametri\n${summary}`);
-        return { ok: true, updated_fields: entries.map(([k]) => k), settings: data };
+        return { ok: true, updated_fields: Object.keys(update), cascade_fields, settings: data };
       },
     }),
 
