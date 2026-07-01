@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -22,9 +23,10 @@ import {
   LogOut,
   Sparkles,
   ClipboardList,
+  Menu,
 } from "lucide-react";
 import { toast } from "sonner";
-import { FloatingChat } from "@/components/assistant/FloatingChat";
+
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
