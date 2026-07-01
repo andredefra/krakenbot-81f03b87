@@ -218,7 +218,7 @@ export function buildAssistantTools(supabase: DB, userId: string) {
 
     // -------------------- WRITE TOOLS --------------------
     updateRiskSettings: tool({
-      description: "Modifica uno o più parametri di rischio. Passa SOLO i campi da cambiare. Prima di chiamarlo devi spiegare in chat cosa stai per cambiare e perché, e attendere conferma esplicita dell'utente.",
+      description: "Modifica uno o più parametri di rischio o di strategia V4. Passa SOLO i campi da cambiare. Prima di chiamarlo spiega in chat cosa cambi e perché, attendi conferma esplicita. Campi accettati: capital_reference, kill_switch_floor, max_positions, max_satellite_positions, max_position_pct, stop_loss_pct, trailing_activate_pct, trailing_gap_pct, take_profit_pct, min_target_pct, daily_loss_limit_pct, monthly_trade_cap, cooldown_hours, timeframe, taker_fee_pct, maker_fee_pct, slippage_pct, bear_dca_fg_threshold, bear_dca_cap_pct, bear_dca_tranche_pct, bear_dca_interval_days, core_only_mode, bear_dca_enabled, exclude_fiat_commodity, macro_ma_period, mid_ma_period, strategy_preset (conservativo|bilanciato|aggressivo), regime_filter, rebalance_frequency, risk_per_trade_pct, fg_greed_cap, max_spread_pct, min_volume_24h, min_listing_age_days, stop_atr_mult, stop_min_pct, paper_fee_bps.",
       inputSchema: z.object({
         capital_reference: z.number().positive().optional(),
         kill_switch_floor: z.number().positive().optional(),
@@ -231,10 +231,9 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         take_profit_pct: z.number().min(0.1).max(100).optional(),
         min_target_pct: z.number().min(0).max(50).optional(),
         daily_loss_limit_pct: z.number().min(0.1).max(50).optional(),
-        monthly_trade_cap: z.number().int().min(1).max(50).optional(),
+        monthly_trade_cap: z.number().int().min(1).max(200).optional(),
+        cooldown_hours: z.number().min(0).max(720).optional(),
         timeframe: z.enum(["15m", "30m", "1h", "2h", "4h", "1d"]).optional(),
-        // v4 — Bear-DCA tuning. core_only/bear_dca_enabled sono gestiti
-        // dall'AI Supervisor; exclude_fiat_commodity resta OFF per multi-asset.
         bear_dca_fg_threshold: z.number().int().min(0).max(50).optional(),
         bear_dca_cap_pct: z.number().min(0).max(100).optional(),
         bear_dca_tranche_pct: z.number().min(0.1).max(50).optional(),
@@ -242,10 +241,36 @@ export function buildAssistantTools(supabase: DB, userId: string) {
         taker_fee_pct: z.number().min(0).max(2).optional(),
         maker_fee_pct: z.number().min(0).max(2).optional(),
         slippage_pct: z.number().min(0).max(2).optional(),
+        // Flag strategici — ora modificabili manualmente via chat
+        core_only_mode: z.boolean().optional(),
+        bear_dca_enabled: z.boolean().optional(),
+        exclude_fiat_commodity: z.boolean().optional(),
+        // Regime / MA periods V4
+        macro_ma_period: z.number().int().min(20).max(400).optional(),
+        mid_ma_period: z.number().int().min(10).max(400).optional(),
+        // Preset e strategia
+        strategy_preset: z.enum(["conservativo", "bilanciato", "aggressivo"]).optional(),
+        regime_filter: z.string().min(1).max(64).optional(),
+        rebalance_frequency: z.string().min(1).max(32).optional(),
+        // Altri parametri motore
+        risk_per_trade_pct: z.number().min(0).max(50).optional(),
+        fg_greed_cap: z.number().int().min(0).max(100).optional(),
+        max_spread_pct: z.number().min(0).max(20).optional(),
+        min_volume_24h: z.number().min(0).optional(),
+        min_listing_age_days: z.number().int().min(0).max(3650).optional(),
+        stop_atr_mult: z.number().min(0).max(20).optional(),
+        stop_min_pct: z.number().min(0).max(50).optional(),
+        paper_fee_bps: z.number().min(0).max(500).optional(),
       }),
       execute: async (patch) => {
         const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
-        if (entries.length === 0) return { ok: false, error: "Nessun campo da aggiornare." };
+        if (entries.length === 0) {
+          return {
+            ok: false,
+            error: "Nessun campo valido ricevuto. Controlla i nomi dei campi nella descrizione del tool e riprova.",
+            received_keys: Object.keys(patch),
+          };
+        }
         const update = Object.fromEntries(entries);
         const { data, error } = await supabase
           .from("settings")
@@ -256,11 +281,12 @@ export function buildAssistantTools(supabase: DB, userId: string) {
           .maybeSingle();
         if (error) return { ok: false, error: error.message };
         const summary = entries.map(([k, v]) => `${k}=${v}`).join(", ");
-        await logEvent(supabase, userId, "info", `Assistente: aggiornati parametri rischio (${summary})`);
-        await notifyTelegram(`🛠️ [PAPER] Assistente: aggiornati parametri rischio\n${summary}`);
-        return { ok: true, updated: data };
+        await logEvent(supabase, userId, "info", `Assistente: aggiornati parametri (${summary})`);
+        await notifyTelegram(`🛠️ [PAPER] Assistente: aggiornati parametri\n${summary}`);
+        return { ok: true, updated_fields: entries.map(([k]) => k), settings: data };
       },
     }),
+
 
     updateSentimentSettings: tool({
       description: "Modifica le fonti sentiment attive e/o i loro pesi. Chiavi valide: fear_greed, lunarcrush, santiment, news.",
