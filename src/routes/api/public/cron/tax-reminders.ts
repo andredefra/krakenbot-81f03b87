@@ -40,8 +40,14 @@ export const Route = createFileRoute("/api/public/cron/tax-reminders")({
         // Load all users that have a settings row (so reminders are per-user)
         const { data: usersR, error: usersErr } = await supabaseAdmin
           .from("settings")
-          .select("user_id,tax_country,tax_reserve_cents,loss_carryforward_cents");
+          .select("user_id,tax_country,tax_reserve_cents,loss_carryforward_cents,is_running")
+          .eq("is_running", true);
         if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
+
+        // Hard kill-switch: nessun utente in running → return immediato.
+        if (!usersR || usersR.length === 0) {
+          return Response.json({ ok: true, skipped: "no users with is_running=true" });
+        }
 
         let sent = 0;
 

@@ -50,6 +50,14 @@ Deno.serve(async (req) => {
 
   const report: Record<string, unknown> = {};
   try {
+    // Hard kill-switch: nessun utente running → skip totale.
+    const { data: activeUsers } = await supa.from("settings").select("user_id").eq("is_running", true).limit(1);
+    if (!activeUsers || activeUsers.length === 0) {
+      return new Response(JSON.stringify({ ok: true, skipped: "no users with is_running=true" }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
 
     // 1b. Storico esteso (~5 anni) via Binance — fatto PRIMA di Kraken così Kraken
     // sovrascrive l'overlap. Binance = free, no key, paginazione via endTime.

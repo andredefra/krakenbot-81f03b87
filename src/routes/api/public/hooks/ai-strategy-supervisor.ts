@@ -79,6 +79,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-strategy-supervisor")
             .eq("is_running", true);
           if (usersErr) return Response.json({ ok: false, error: usersErr.message }, { status: 500 });
 
+          // Hard kill-switch: nessun utente in running → return immediato prima di qualsiasi
+          // chiamata a AI Gateway. Evita consumo crediti da trigger manuali accidentali.
+          if (!users || users.length === 0) {
+            return Response.json({ ok: true, skipped: "no users with is_running=true" });
+          }
+
           const gateway = createLovableAiGatewayProvider(cronKey);
           const model = gateway("google/gemini-3-flash-preview");
           const results: Array<Record<string, unknown>> = [];

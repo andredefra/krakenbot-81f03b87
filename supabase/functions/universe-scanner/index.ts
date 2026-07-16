@@ -60,6 +60,13 @@ Deno.serve(async (req) => {
       .from("settings")
       .select("min_volume_24h,max_spread_pct,min_listing_age_days,is_running,exclude_fiat_commodity")
       .eq("is_running", true);
+
+    // Hard kill-switch: nessun utente running → skip totale (no Kraken calls).
+    if (!settingsRows || settingsRows.length === 0) {
+      return new Response(JSON.stringify({ ok: true, skipped: "no users with is_running=true" }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
     const minVol = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_volume_24h)).filter((n) => !Number.isNaN(n)), 5_000_000);
     const maxSpread = Math.min(...(settingsRows ?? []).map((s) => Number(s.max_spread_pct)).filter((n) => !Number.isNaN(n)), 0.3);
     const minAge = Math.min(...(settingsRows ?? []).map((s) => Number(s.min_listing_age_days)).filter((n) => !Number.isNaN(n)), 60);
