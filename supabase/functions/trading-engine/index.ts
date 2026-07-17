@@ -26,6 +26,13 @@ Deno.serve(async (req) => {
   try {
     const { data: users, error } = await supa.from("settings").select("*").eq("is_running", true);
     if (error) throw error;
+    // Hard kill-switch: nessun utente running → skip totale.
+    if (!users || users.length === 0) {
+      return new Response(JSON.stringify({ ok: true, skipped: "no users with is_running=true" }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
 
     const results: Array<{ user_id: string; ok: boolean; note?: string }> = [];
     for (const settings of users ?? []) {

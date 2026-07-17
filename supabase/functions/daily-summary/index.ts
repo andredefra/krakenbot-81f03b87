@@ -17,8 +17,15 @@ Deno.serve(async (req) => {
   const supa = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
 
   try {
-    const { data: users } = await supa.from("settings").select("user_id,mode,is_running,capital_reference");
+    const { data: users } = await supa.from("settings").select("user_id,mode,is_running,capital_reference").eq("is_running", true);
+    // Hard kill-switch: nessun utente running → skip totale (no Telegram, no queries).
+    if (!users || users.length === 0) {
+      return new Response(JSON.stringify({ ok: true, skipped: "no users with is_running=true" }), {
+        headers: { ...cors, "content-type": "application/json" },
+      });
+    }
     let sent = 0;
+
 
     for (const s of users ?? []) {
       if (!s.is_running) continue;
