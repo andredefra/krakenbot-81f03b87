@@ -1,27 +1,33 @@
-## Piano
+## Stato attuale (verificato ora)
 
-### 1. Blocco hard su tutti gli endpoint automatici
-Aggiungo un kill-switch che fa early-return `{ ok: true, skipped: "is_running=false" }` prima di qualsiasi chiamata a AI Gateway / Kraken / market data negli endpoint:
+- `cron.job` → vuoto, nessun job schedulato
+- `settings.is_running = false` per il tuo utente
+- `net.http_request_queue` (pg_net) → 0 richieste pendenti
+- Log edge functions ultimi 7 giorni → **zero invocazioni**
 
-- `src/routes/api/public/hooks/ai-strategy-supervisor.ts`
-- `src/routes/api/public/hooks/trading-engine.ts` (se esiste)
-- `src/routes/api/public/hooks/daily-summary.ts`
-- `src/routes/api/public/hooks/universe-scanner.ts`
-- `src/routes/api/public/hooks/historical-sync.ts`
-- `src/routes/api/public/hooks/tax-reminders.ts`
+Le barre che vedi in *Supabase Dashboard → Edge Functions → Invocations* sono quasi certamente **dati storici** (giorni precedenti allo stop) che restano visibili nel grafico a finestra fissa. Niente sta girando ora.
 
-Logica: leggo `settings.is_running` con `supabaseAdmin`; se `false` per tutti → return immediato, zero costi. (Prima esploro la cartella `src/routes/api/public/hooks/` per la lista esatta dei file.)
+## Piano di blindaggio (belt-and-suspenders)
 
-### 2. Publish: SÌ, questa volta serve
-Il blocco è **codice frontend/server route** → per farlo diventare attivo in produzione devi cliccare **Publish → Update**. Se non pubblichi, il kill-switch esiste solo nel preview.
+Per essere sicuro al 100% che nessuno possa triggerare invocazioni anche manualmente o via URL scoperto, aggiungo un kill-switch hard identico a quello già presente in `universe-scanner` e `historical-sync` anche nelle due edge functions rimaste:
 
-Nota: anche senza publish sei già al sicuro (cron vuoti + `is_running=false`). Il publish serve solo per rendere permanente il blocco hard anche in caso di trigger manuale futuro sull'URL prod.
+1. **`supabase/functions/trading-engine/index.ts`**
+   - Early-return `{ ok: true, skipped: "no users with is_running=true" }` come prima riga utile, PRIMA di qualsiasi fetch Kraken / market data / AI.
 
-### 3. Come ripartire in futuro
-Per riavviare tutto ti basterà:
-1. `UPDATE settings SET is_running = true;`
-2. Rischedulare i cron (te lo faccio in un colpo solo)
+2. **`supabase/functions/daily-summary/index.ts`**
+   - Stesso early-return in cima, PRIMA di qualsiasi query o chiamata Telegram.
 
-Il codice del kill-switch resta ma diventa "trasparente" quando `is_running=true`.
+3. **Verifica finale**
+   - Rileggo che tutte e 4 le edge functions (`trading-engine`, `daily-summary`, `universe-scanner`, `historical-sync`) abbiano il kill-switch come primo controllo dopo il parse della request.
+   - Le edge functions Supabase si deployano automaticamente al prossimo push, **nessun publish richiesto** per loro.
+
+## Cosa NON serve fare
+
+- Nessun `Publish` necessario (le TSS routes hanno già il kill-switch dal turno precedente; Publish serve solo se vuoi il blocco anche in produzione lovable.app).
+- Nessuna azione manuale su Supabase.
+
+## Come verificare dopo
+
+Riapri *Edge Functions → Invocations* dopo 24h: il grafico dovrà mostrare zero nuove barre. Se vedi ancora attività, mandami il nome della funzione e i timestamp e cerco la sorgente (probabile trigger esterno o webhook rimasto configurato).
 
 Procedo?
